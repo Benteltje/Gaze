@@ -117,9 +117,9 @@ fi
 # The unused legacy Liveness texture model is excluded from app bundles.
 # Lock-screen photo rejection uses the separate Spoof model below.
 
-# The face-spoof OBJECT detector (Roboflow, trained by scripts/train_spoof.swift). Spots a
-# held phone/screen/printed photo in frame — a different signal from the passive texture
-# model. Missing weights block unlock when photo rejection is enabled.
+# The face-crop live/spoof classifier (Tools/Scripts/train-spoof-classifier.swift). Spots a
+# phone, screen or printed photo held up as the face — a different signal from the passive
+# texture model. Missing weights block unlock when photo rejection is enabled.
 if [ -d "$ROOT/Resources/Spoof.mlmodelc" ]; then
 	echo "→ Using prebuilt spoof detector"
 	cp -R "$ROOT/Resources/Spoof.mlmodelc" "$STAGE/Contents/Resources/"
@@ -190,6 +190,19 @@ else
 	SDK="${SDKROOT:-$(xcrun --show-sdk-path --sdk macosx)}"
 fi
 
+# The Shortcuts action (Sources/App/ConfirmIdentityIntent.swift) imports AppIntents.
+# Linked only when the file is present, so checkouts without it still build.
+APP_INTENTS_FLAGS=()
+if [ -f "$ROOT/Sources/App/ConfirmIdentityIntent.swift" ]; then
+	# The compiler also writes the intent's constant values, which the metadata
+	# step below turns into Metadata.appintents: without that file Shortcuts never
+	# lists the action.
+	APP_INTENTS_FLAGS=(-framework AppIntents
+		-emit-const-values-path "$STAGE_ROOT/Gaze.swiftconstvalues"
+		-Xfrontend -const-gather-protocols-file
+		-Xfrontend "$ROOT/Tools/Scripts/app-intents-protocols.json")
+fi
+
 # Every build carries every architecture in GAZE_ARCHS fused with lipo; a single
 # entry compiles just that slice and skips the merge. Slices live under STAGE_ROOT,
 # which the EXIT trap removes, and a failed slice compile stops the script before
@@ -216,6 +229,7 @@ case "$GAZE_ARCHS" in
 		-framework LocalAuthentication \
 		-framework OpenDirectory \
 		-framework FinderSync \
+		${APP_INTENTS_FLAGS[@]+"${APP_INTENTS_FLAGS[@]}"} \
 		"${GAZE_MAIN_SOURCES[@]}" \
 		-o "$slice"
 		slices="$slices $slice"
@@ -240,6 +254,7 @@ case "$GAZE_ARCHS" in
 		-framework LocalAuthentication \
 		-framework OpenDirectory \
 		-framework FinderSync \
+		${APP_INTENTS_FLAGS[@]+"${APP_INTENTS_FLAGS[@]}"} \
 		"${GAZE_MAIN_SOURCES[@]}" \
 		-o "$BIN"
 	;;
@@ -296,6 +311,43 @@ APPEX_VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "
 APPEX_BUILD="$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$STAGE/Contents/Info.plist")"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APPEX_VERSION" -c "Set :CFBundleVersion $APPEX_BUILD" "$APPEX/Contents/Info.plist"
 echo "  ✓ GazeFinder.appex"
+
+# The sudo PAM module. Loaded by /usr/bin/sudo once the user turns on "Approve sudo
+# with your face"; SudoApproval copies it to /usr/local/lib/pam. Signed with the app.
+PAM_ARCH_FLAGS=()
+for arch in $GAZE_ARCHS; do PAM_ARCH_FLAGS+=(-arch "$arch"); done
+xcrun clang -bundle -O2 -Wall -Werror "${PAM_ARCH_FLAGS[@]}" -isysroot "$SDK" \
+	-mmacosx-version-min="${MIN_SDK_MAJOR}.0" -lpam -framework Security -framework CoreFoundation \
+	"$ROOT/Sources/PAM/pam_gaze.c" -o "$STAGE/Contents/Resources/pam_gaze.so"
+codesign --force --sign "$IDENTITY" "$STAGE/Contents/Resources/pam_gaze.so"
+echo "  ✓ pam_gaze.so"
+
+# Shortcuts metadata, normally made by Xcode. Optional: a failure here only costs
+# the Shortcuts action, never the build.
+if [ -f "$STAGE_ROOT/Gaze.swiftconstvalues" ] && xcrun -f appintentsmetadataprocessor >/dev/null 2>&1; then
+	echo "$STAGE_ROOT/Gaze.swiftconstvalues" > "$STAGE_ROOT/constvals.txt"
+	printf '%s\n' "${GAZE_MAIN_SOURCES[@]}" > "$STAGE_ROOT/sources.txt"
+	first_arch="${GAZE_ARCHS%% *}"
+	if xcrun appintentsmetadataprocessor \
+		--output "$STAGE/Contents/Resources" \
+		--toolchain-dir "$(dirname "$(dirname "$(dirname "$(xcrun -f swift)")")")" \
+		--module-name Gaze \
+		--sdk-root "$SDK" \
+		--xcode-version "$(xcodebuild -version 2>/dev/null | awk '/Build version/{print $3}')" \
+		--platform-family macOS \
+		--deployment-target "${MIN_SDK_MAJOR}.0" \
+		--target-triple "$first_arch-apple-macos${MIN_SDK_MAJOR}.0" \
+		--source-file-list "$STAGE_ROOT/sources.txt" \
+		--swift-const-vals-list "$STAGE_ROOT/constvals.txt" \
+		--binary-file "$BIN" \
+		--dependency-file "$STAGE_ROOT/intents.d" \
+		--stringsdata-file "$STAGE_ROOT/intents.stringsdata" \
+		--force >/dev/null 2>&1; then
+		echo "  ✓ Shortcuts metadata"
+	else
+		echo "  ! Shortcuts metadata failed; the Confirm It's You action won't appear in Shortcuts."
+	fi
+fi
 
 if [ "${DIST:-}" = "1" ]; then
 	echo "→ Signing release with Developer ID"

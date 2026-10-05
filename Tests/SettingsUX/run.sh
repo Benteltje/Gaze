@@ -41,7 +41,7 @@ forbid 'Recognise your face without entering a password.' \
 	"old hero copy implying lock-screen recognition is gone"
 need 'if settings.unlockBackend == .none, hasStoredPassword {' \
 	"retained-password note gated on .none with an existing stored password"
-need "Gaze won't use it to unlock in this mode." \
+need "Gaze doesn’t use it to unlock in this mode." \
 	"retained note states unlock stays off"
 need 'private var retainedPasswordRow: some View {' \
 	"retained row reuses the existing Change / Revoke actions"

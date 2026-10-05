@@ -53,7 +53,8 @@ actor UnlockFrameEvaluator {
 		self.allowsMaskUnlock = allowsMaskUnlock
 		// Learned prints match alongside the originals, so the face the Mac sees
 		// improves with use — but the originals alone anchor the drift guard.
-		self.matcher = FaceTemplateMatcher(templates: faces.map { $0.prints + $0.learnedPrints }, embedder: embedder)
+		self.matcher = FaceTemplateMatcher(templates: faces.map { $0.prints + $0.learnedPrints },
+			originalCounts: faces.map(\.prints.count), embedder: embedder)
 		let withUpper = faces.enumerated().filter { !$0.element.upperPrints.isEmpty }
 		self.upperFaceIndices = withUpper.map(\.offset)
 		self.upperMatcher = withUpper.isEmpty

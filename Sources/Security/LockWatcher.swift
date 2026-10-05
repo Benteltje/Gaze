@@ -54,6 +54,12 @@ final class LockWatcher {
 	/// When the monitor last saw Space. A press it saw is a retry request, not typing:
 	/// the input guard forgives exactly one keyDown within 300 ms of it.
 	private var lastSpaceAt: Date?
+	/// Set once Gaze has explained why it isn't looking on this lock, so the reason
+	/// shows once rather than on every wake and Space press.
+	private var explainedStandDown = false
+	/// Every Space the monitor has reported. The scan forgives exactly this many key
+	/// presses, so pressing Space repeatedly never reads as typing a password.
+	private var spacePresses = 0
 
 	private let capsule = NotchCapsuleController()
 	/// Checks the window server while the Mac is locked, in case the unlock notification
@@ -113,7 +119,7 @@ final class LockWatcher {
 	/// proof of presence, so the hold can be shorter and the unlock feel sooner — but
 	/// only on that path. With the challenge off, the full hold above is all that stands
 	/// between a match and the password, and it stays.
-	private static let requiredMatchDurationWithChallenge: TimeInterval = 0.8
+	private static let requiredMatchDurationWithChallenge: TimeInterval = 0.5
 
 	/// How long a face must match before the movement is asked for. The full hold above
 	/// still has to complete before the password goes in; this only starts the movement
@@ -167,6 +173,14 @@ final class LockWatcher {
 	/// Below this overlap a match counts as a different physical subject, even for the
 	/// same enrolled face, and restarts the hold rather than inheriting it.
 	private static let subjectChangeOverlap: CGFloat = 0.2
+
+	/// How far below the match threshold the tracked face may score while it is
+	/// mid-movement the requested way, inside the interruption grace. Twice the turning
+	/// allowance: a nod tips the face away from the enrolled prints more than a turn.
+	private static let movementExcursionScoreDrop: Float = 0.30
+
+	/// How long Follow the light shows its tick before the next prompt or the unlock.
+	private static let lookConfirmation: Duration = .milliseconds(500)
 
 	/// Intersection over union of two Vision-normalized boxes. Same space on both sides
 	/// is all it needs; the values never leave this comparison.
@@ -299,6 +313,7 @@ final class LockWatcher {
 			IrisLocator.warmUp()
 		}
 		isLocked = true
+		explainedStandDown = false
 		spaceMonitor.start()
 		closedAttemptLogged = false
 		lastFacePixelBuffer = nil
@@ -327,6 +342,8 @@ final class LockWatcher {
 		pointerRetry?.cancel()
 		pointerRetry = nil
 		guard attempt != nil else { return }
+		submissionID = nil
+		didSubmitPassword = false
 		Self.logger.notice("Display turned off during a scan; stopping until it wakes.")
 		logAttemptTiming(outcome: "display-slept")
 		recordEndedWithoutGaze(.leftLocked)
@@ -344,6 +361,8 @@ final class LockWatcher {
 		pointerRetry?.cancel()
 		pointerRetry = nil
 		guard attempt != nil else { return }
+		submissionID = nil
+		didSubmitPassword = false
 		Self.logger.notice("Screen saver started; not scanning until it's dismissed.")
 		logAttemptTiming(outcome: "screen-saver-started")
 		recordEndedWithoutGaze(.leftLocked)
@@ -413,8 +432,7 @@ final class LockWatcher {
 		// was typed or clicked to wake the Mac, the shorter settle is enough before
 		// the input snapshot is taken.
 		let settle: Duration
-		if Self.lidOpenedRecently(),
-			CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown) > 1.0,
+		if CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown) > 1.0,
 			CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .leftMouseDown) > 1.0 {
 			settle = Self.lidOpenSettle
 			Self.logger.notice("Woke with the lid open and no recent input; using the shorter settle.")
@@ -447,20 +465,30 @@ final class LockWatcher {
 		}
 		guard UnlockExecutionPolicy.current.permitsScanning(passwordReplayEnabled: PasswordReplaySafety.isEnabled,
 			keystrokeSelected: Preferences.shared.unlockBackend == .keystroke) else { return }
-		guard submissionID == nil, Self.submissionBudget.maySubmit, !Self.manualInputObserved else { return }
+		guard submissionID == nil, Self.submissionBudget.maySubmit, !Self.manualInputObserved else {
+			Self.logger.notice("\(trigger, privacy: .public) ignored: submitting=\(self.submissionID != nil) budget=\(Self.submissionBudget.maySubmit) typed=\(Self.manualInputObserved)")
+			return
+		}
 		guard attempt == nil else { return }
 		guard store.isEnrolled else { return }
+		guard Preferences.shared.unlockBackend != .keystroke || !PasswordVault.isStale else {
+			Self.logger.notice("\(trigger, privacy: .public) with an out-of-date saved password; not looking.")
+			explainStandDown("Your Mac password changed. Update it in Gaze.")
+			return
+		}
 		// Paused means paused: no camera, no panel, no indicator light. Checked here
 		// rather than inside the attempt so a pause costs nothing at all — the point of
 		// the switch is that Gaze is not looking, and a green camera light that turns
 		// itself off again would say otherwise.
 		guard !Preferences.shared.isPaused else {
 			Self.logger.notice("\(trigger, privacy: .public) while paused; not looking.")
+			explainStandDown("Gaze is paused.")
 			return
 		}
 		guard lockout.mayAttempt() else {
 			Self.logger.notice("\(trigger, privacy: .public) while locked out; not looking.")
 			StateBroadcast.post(.lockedOut)
+			explainStandDown("Too many tries. Unlock with your password.")
 			return
 		}
 		if UnlockExecutionPolicy.current == .scanOnly {
@@ -498,6 +526,7 @@ final class LockWatcher {
 		LockScanDiagnostics.shared.begin(identifier)
 		attempt = Task {
 			defer {
+				IrisLocator.forgetFrame()
 				LockScanDiagnostics.shared.finishScanning(for: identifier)
 				if self.attemptID == identifier {
 					self.attempt = nil
@@ -515,7 +544,7 @@ final class LockWatcher {
 				CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .leftMouseDown),
 				CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved))
 			if trigger == "Screen locked", idle > 5 {
-				try? await Task.sleep(for: .milliseconds(600))
+				try? await Task.sleep(for: .milliseconds(300))
 				if Self.screenSaverIsRunning() { self.screenSaverRunning = true }
 				guard !Task.isCancelled, !self.screenSaverRunning else {
 					Self.logger.notice("Screen saver took over the lock; not scanning until it's dismissed.")
@@ -584,9 +613,28 @@ final class LockWatcher {
 	/// Space on the lock screen means "look again". Stamped first, so the press never
 	/// counts as typing even when a scan is already running; only a still screen with
 	/// no scan in progress starts one.
+	/// Shows why Gaze isn't scanning, briefly and once per lock, instead of doing nothing.
+	private func explainStandDown(_ message: String) {
+		guard isLocked, !explainedStandDown, !Self.displaysAreAsleep() else { return }
+		explainedStandDown = true
+		capsule.show(phase: .unavailable(message))
+		capsule.hide(after: 2.5)
+	}
+
 	private func handleSpaceKey() {
 		lastSpaceAt = Date()
-		guard isLocked, !Self.displaysAreAsleep(), !screenSaverRunning, attempt == nil else { return }
+		spacePresses += 1
+		// Space is an explicit "look again", so it lifts the stand-down that earlier
+		// typing or a click caused for this lock. A password with a space in it is
+		// unaffected: Gaze clears the field before it types.
+		if Self.manualInputObserved, attempt == nil {
+			Self.manualInputObserved = false
+			Self.logger.notice("Space pressed after manual input; looking again.")
+		}
+		guard isLocked, !Self.displaysAreAsleep(), !screenSaverRunning, attempt == nil else {
+			Self.logger.notice("Space ignored: locked=\(self.isLocked) asleep=\(Self.displaysAreAsleep()) saver=\(self.screenSaverRunning) scanning=\(self.attempt != nil)")
+			return
+		}
 		beginAttempt(trigger: "Space pressed on a locked screen")
 	}
 
@@ -637,6 +685,7 @@ final class LockWatcher {
 				}
 			} else if !Self.screenIsLocked() {
 				Self.logger.notice("Unlocked into a session Gaze cannot verify; hiding the panel.")
+				StateBroadcast.post(.idle)
 				isLocked = false
 				spaceMonitor.stop()
 				submissionID = nil
@@ -675,6 +724,13 @@ final class LockWatcher {
 
 		guard didSubmitPassword else {
 			// Unlocked by other means. Nothing to celebrate — just get out of the way.
+			// macOS only unlocks after the account password or Touch ID, which is the
+			// proof the lockout waits for, so it clears here as Face ID does after a
+			// passcode. Before, it only cleared from Settings, and a locked-out Gaze
+			// stayed silent on every lock screen after.
+			if lockout.attemptsRemaining < LockoutManager.maxAttempts {
+				lockout.clearAfterPasswordAuth()
+			}
 			logAttemptTiming(outcome: "other")
 			recordEndedWithoutGaze(.openedAnotherWay)
 			lastFacePixelBuffer = nil
@@ -823,6 +879,12 @@ final class LockWatcher {
 		// Baseline for the Space forgiveness below. Tracks the re-baseline, so a second
 		// Space mid-scan is forgiven against the first one rather than the attempt start.
 		var spaceBaseline = inputSnapshot
+		var spaceBaselinePresses = spacePresses
+		var otherKeysBaseline = spaceMonitor.otherKeyDowns
+		// When a single unexplained keyDown was first seen. The key counter moves the
+		// instant a key goes down; the Space monitor's report arrives a run-loop turn
+		// later, so the guard briefly waits for it instead of calling it typing.
+		var unexplainedKeySince: Date?
 		func contextIsCurrent() -> Bool {
 			guard !Task.isCancelled, isLocked, !Self.manualInputObserved,
 				LockedConsoleSession.current() == lockedSession,
@@ -844,17 +906,47 @@ final class LockWatcher {
 				// Space the monitor saw is a retry request, not typing: forgive exactly
 				// one keyDown within 300 ms of it and re-baseline. Anything else stops
 				// Gaze as before.
-				if let pressed = lastSpaceAt, Date().timeIntervalSince(pressed) < 0.3,
-					current.keys == spaceBaseline.keys + 1,
+				// With the monitor listening it sees every key on the keyboard, so typing
+				// is any key that isn't Space. The system counter only backs it up, with
+				// one press of slack because it can run ahead of the monitor's report.
+				if spaceMonitor.isListening,
+					spaceMonitor.otherKeyDowns == otherKeysBaseline,
 					current.leftClicks == spaceBaseline.leftClicks,
-					current.rightClicks == spaceBaseline.rightClicks {
+					current.rightClicks == spaceBaseline.rightClicks,
+					Int(current.keys &- spaceBaseline.keys) <= spacePresses - spaceBaselinePresses + 1 {
 					lastSpaceAt = nil
+					unexplainedKeySince = nil
 					spaceBaseline = current
+					spaceBaselinePresses = spacePresses
 					inputGuard = LockScreenInputGuard(initial: current)
 					return contextIsCurrent()
 				}
+				// Counted, not timed: every key since the baseline must be a Space the
+				// monitor reported, and no click may have happened.
+				let newKeys = Int(current.keys &- spaceBaseline.keys)
+				let newSpaces = spacePresses - spaceBaselinePresses
+				if newSpaces > 0, newKeys <= newSpaces,
+					current.leftClicks == spaceBaseline.leftClicks,
+					current.rightClicks == spaceBaseline.rightClicks {
+					lastSpaceAt = nil
+					unexplainedKeySince = nil
+					spaceBaseline = current
+					spaceBaselinePresses = spacePresses
+					inputGuard = LockScreenInputGuard(initial: current)
+					return contextIsCurrent()
+				}
+				if spaceMonitor.isListening,
+					current.keys == spaceBaseline.keys &+ 1,
+					current.leftClicks == spaceBaseline.leftClicks,
+					current.rightClicks == spaceBaseline.rightClicks {
+					let since = unexplainedKeySince ?? Date()
+					unexplainedKeySince = since
+					// Long enough for the report, far shorter than any match hold, so a
+					// real keystroke still stops Gaze before it can unlock.
+					if Date().timeIntervalSince(since) < 0.25 { return contextIsCurrent() }
+				}
 				if !Self.manualInputObserved {
-					Self.logger.notice("Manual input observed; yielding to macOS authentication until the next unlock.")
+					Self.logger.notice("Manual input observed (keys +\(current.keys &- spaceBaseline.keys), spaces +\(self.spacePresses - spaceBaselinePresses), other keys +\(self.spaceMonitor.otherKeyDowns - otherKeysBaseline), clicks +\(current.leftClicks &- spaceBaseline.leftClicks)/\(current.rightClicks &- spaceBaseline.rightClicks)); yielding to macOS authentication.")
 				}
 				Self.manualInputObserved = true
 				report(.manualInput)
@@ -868,7 +960,7 @@ final class LockWatcher {
 		if let antiSpoof, !antiSpoof.isActive {
 			report(.verificationUnavailable)
 			Self.logger.error("Anti-spoof protection was requested but its model is unavailable. Refusing password submission.")
-			capsule.update(phase: .notRecognised)
+			capsule.update(phase: .unavailable("Gaze can’t check faces right now."))
 			return
 		}
 		guard requestIsCurrent() else { capsule.hide(); return }
@@ -907,7 +999,10 @@ final class LockWatcher {
 		var freshFrames = RecognitionFrameGate()
 		var evaluatedContinuity: UInt64?
 		let evaluator = UnlockFrameEvaluator(embedder: store.embedder, faces: store.faces.filter { $0.isEnabled && enrolledFaces.contains($0.id) }, antiSpoof: antiSpoof, allowsMaskUnlock: maskUnlock)
-		let challenge: LivenessChallenge? = LivenessChallenge()
+		// Under Reduce Motion there is no moving light: Follow the light is left out and
+		// the other offered movements are asked for instead.
+		let challenge: LivenessChallenge? = LivenessChallenge(
+			allowsLook: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
 		var challengeGate = UnlockChallengeGate(requiredActions: movementCount.rawValue)
 		// Opt-in render timing (GAZE_RENDER_DIAGNOSTICS=1). Measurement and logging only:
 		// no branch below reads these values, so unlock behaviour is identical either way.
@@ -932,8 +1027,14 @@ final class LockWatcher {
 			tickCapsuleMs += renderMs(started, ContinuousClock.now)
 			renderPhase = name
 		}
+		/// The enrolled face the current prompt was shown to. The match hold breaks while a
+		/// movement rides out a brief interruption, so the hold alone can't say whose it was.
+		var movementFaceID: UUID?
+		/// While set, Follow the light's tick is showing and nothing new is presented.
+		var lookConfirmedUntil: ContinuousClock.Instant?
 		func resetMovementGuidance(reason: String) {
 			challenge?.reset()
+			lookConfirmedUntil = nil
 			guard challengeGate.reset() else { return }
 			report(.scanning)
 			updateCapsule("retry", .challenge(prompt: "Face the camera to retry", symbol: "viewfinder",
@@ -957,6 +1058,27 @@ final class LockWatcher {
 		/// overlap order so the tracked subject is re-found without embedding the
 		/// other faces when it is still there.
 		var trackedBox: CGRect?
+
+		/// Whether a presented movement rides out this frame instead of being withdrawn
+		/// (see `UnlockChallengeGate.interruptionGrace`). The holds still break, so the
+		/// unlock needs a fresh continuous match afterwards; the tracked box is kept, so the
+		/// face that comes back must be the same subject.
+		func ridesOutInterruption(_ reason: String) -> Bool {
+			guard challengeGate.tolerates(interruptionAt: .now) else { return false }
+			matchingHold.reset()
+			rejectionHold.reset()
+			Self.logger.notice("Movement kept through a brief interruption. reason=\(reason, privacy: .public)")
+			return true
+		}
+
+		/// Follow the light gets a brief tick when it passes, so the person knows it worked
+		/// before the next prompt or the unlock.
+		func confirmLookIfNeeded(_ action: LivenessChallenge.Action) {
+			guard action.isLook else { return }
+			updateCapsule("lookDone", .challenge(prompt: NotchCapsuleModel.Phase.movementDoneCaption,
+				symbol: NotchCapsuleModel.Phase.movementDoneSymbol, hintX: 0, hintY: 0, pulses: false))
+			lookConfirmedUntil = ContinuousClock.now.advanced(by: Self.lookConfirmation)
+		}
 
 		// Counters, so "nobody in front of the camera" can say what it actually saw.
 		//
@@ -1042,7 +1164,7 @@ final class LockWatcher {
 				report(freshFrames.hasReceivedFrame ? .cameraStalled : .firstFrameTimeout)
 				let stage = freshFrames.hasReceivedFrame ? "running stream" : "first frame"
 				Self.logger.error("Camera timed out at \(stage, privacy: .public); analyzed=\(camera.analyzedFrames) expired=\(camera.expiredFrames). No password submitted.")
-				updateCapsule("notRecognised", .notRecognised)
+				updateCapsule("unavailable", .unavailable("The camera isn’t responding."))
 				cameraFailed = true
 				return
 			case .waiting:
@@ -1068,8 +1190,9 @@ final class LockWatcher {
 
 			if challengeGate.expired(at: .now) {
 				report(.notRecognized)
-				Self.logger.notice("Challenge not answered in time; treating as a rejection.")
-				lockout.recordFailure()
+				// Not counted toward the lockout: an unanswered movement is someone who
+				// looked away or walked off, not a face that failed to match.
+				Self.logger.notice("Challenge not answered in time; ending this attempt.")
 				UnlockAttemptLog.shared.record(.notRecognised,
 					steps: UnlockAttempt.Steps(lookPasses: challenge?.lookPassLog),
 					photo: camera.sample?.pixelBuffer, reason: .movementTimedOut)
@@ -1094,6 +1217,11 @@ final class LockWatcher {
 			}
 			guard !camera.faceMissing, var sample = camera.sample else {
 				lastAbsence = camera.absence?.summary ?? "no sample"
+				// Lost for a moment mid-movement: a nod can tip the face out of detection.
+				// A second face in frame is never ridden out.
+				let secondFace: Bool
+				if case .multipleFaces? = camera.absence { secondFace = true } else { secondFace = false }
+				if !secondFace, ridesOutInterruption("face unavailable") { continue }
 				// Face left the frame — both runs are broken and start again from zero.
 				matchingHold.reset()
 				rejectionHold.reset()
@@ -1132,9 +1260,12 @@ final class LockWatcher {
 			}
 			let usable = candidates.filter { FrameQuality.rejection($0) == nil }
 			guard !usable.isEmpty else {
-				matchingHold.reset()
-				rejectionHold.reset()
-				resetMovementGuidance(reason: "frame quality")
+				// Motion blur mid-movement is the movement, not a new attempt.
+				if !ridesOutInterruption("frame quality") {
+					matchingHold.reset()
+					rejectionHold.reset()
+					resetMovementGuidance(reason: "frame quality")
+				}
 				qualityRejects += 1
 				let qualityRejection = FrameQuality.rejection(sample)
 				lastRejection = qualityRejection
@@ -1224,6 +1355,8 @@ final class LockWatcher {
 				guard challengeGate.admits(frameID: sampleFrameID, capturedAt: sampleCapturedAt, now: .now)
 				else { continue }
 				Self.logger.notice("Movement progress from turning frame; action=\(challenge.action.prompt, privacy: .public) score=\(result.score) returning=\(challenge.isReturningToRest).")
+				challengeGate.resume()
+				let action = challenge.action
 				let wasReturningToRest = challenge.isReturningToRest
 				let consumption = challenge.consume(sample)
 				if consumption.poseSourceInvalidated {
@@ -1241,6 +1374,7 @@ final class LockWatcher {
 				}
 				if challenge.isComplete {
 					challengeGate.completeAction()
+					confirmLookIfNeeded(action)
 					if !challengeGate.isVerified {
 						challenge.next()
 					}
@@ -1248,6 +1382,34 @@ final class LockWatcher {
 				continue
 			}
 			if isSameFaceTurning { continue }
+			// Further below the match than a turn goes, but still the tracked face and still
+			// mid-movement the requested way: a nod tips the face away from the enrolled
+			// prints. These frames feed the outward half of the movement, inside the
+			// interruption grace only. They can never complete it, since completion is the
+			// return to the starting pose, where the face has to match again, and they never
+			// count toward the match hold. A low score at rest is still a different person.
+			let isTrackedFaceMoving = result.comparedIdentity && result.failure == nil
+				&& result.score >= store.embedder.matchThreshold - Self.movementExcursionScoreDrop
+				&& trackedBox.map { Self.overlap(sample.boundingBox, $0) >= Self.subjectChangeOverlap } == true
+			if isTrackedFaceMoving, let challenge, challengeGate.isPresented, !challengeGate.isVerified,
+				challenge.isMovingAsAsked(sample.pose), ridesOutInterruption("movement excursion") {
+				guard challengeGate.admits(frameID: sampleFrameID, capturedAt: sampleCapturedAt, now: .now)
+				else { continue }
+				Self.logger.notice("Movement progress from excursion frame; action=\(challenge.action.prompt, privacy: .public) score=\(result.score) returning=\(challenge.isReturningToRest).")
+				let wasReturningToRest = challenge.isReturningToRest
+				if challenge.consume(sample).poseSourceInvalidated {
+					resetMovementGuidance(reason: "pose source changed")
+					continue
+				}
+				if challenge.isReturningToRest && !wasReturningToRest {
+					let hint = challenge.guidanceHint
+					updateCapsule("return", .challenge(prompt: challenge.guidancePrompt,
+						symbol: challenge.guidanceSymbol, hintX: hint.x, hintY: hint.y, pulses: hint.pulses,
+						isReturningToRest: true))
+					Self.logger.notice("Requested movement observed; waiting for return to rest. action=\(challenge.action.prompt, privacy: .public)")
+				}
+				continue
+			}
 			matchingHold.reset()
 			if challengeGate.isPresented, let challenge {
 					let pose = challenge.poseMeasurement(yaw: sample.pose.yaw, pitch: sample.pose.pitch,
@@ -1285,6 +1447,7 @@ final class LockWatcher {
 				continue
 			}
 			rejectionHold.reset()
+			challengeGate.resume()
 
 		if firstMatchAt == nil { firstMatchAt = .now }
 
@@ -1299,7 +1462,7 @@ final class LockWatcher {
 				if case .unavailable = decision {
 					report(.verificationUnavailable)
 					Self.logger.error("Anti-spoof inference failed; refusing password submission.")
-					updateCapsule("notRecognised", .notRecognised)
+					updateCapsule("unavailable", .unavailable("Gaze can’t check faces right now."))
 					return
 				}
 				if case .spoof(let reason, let score) = decision {
@@ -1328,10 +1491,13 @@ final class LockWatcher {
 				matchingHold.reset()
 				challenge?.reset()
 				challengeGate.reset()
-				updateCapsule("notRecognised", .notRecognised)
+				updateCapsule("unavailable", .unavailable("Gaze can’t check faces right now."))
 				return
 			}
-			if matchingHold.faceID != face.id {
+			// A hold broken by an interruption the movement rode out still belongs to the
+			// face the prompt was shown to.
+			let heldFaceID = matchingHold.faceID ?? (challengeGate.isPresented ? movementFaceID : nil)
+			if heldFaceID != face.id {
 				resetMovementGuidance(reason: "identity changed")
 			} else if let trackedBox,
 				Self.overlap(sample.boundingBox, trackedBox) < Self.subjectChangeOverlap
@@ -1364,7 +1530,8 @@ final class LockWatcher {
 			// past. It is the last thing between recognition and the password.
 			if let challenge, !challengeGate.isVerified {
 				if !challengeGate.isPresented {
-					guard challenge.isBaselineReady else { continue }
+					guard challenge.isBaselineReady,
+						lookConfirmedUntil.map({ ContinuousClock.now >= $0 }) ?? true else { continue }
 					guard capsule.canPresentGuidance else {
 						report(.verificationUnavailable)
 						Self.logger.error("Guidance panel is unavailable; refusing a hidden movement challenge.")
@@ -1372,6 +1539,7 @@ final class LockWatcher {
 						return
 					}
 					challengeGate.present(at: .now, frameID: sampleFrameID)
+					movementFaceID = face.id
 					movementPresentedAt = .now
 					report(.movement)
 					let hint = challenge.guidanceHint
@@ -1391,6 +1559,7 @@ final class LockWatcher {
 				}
 				guard challengeGate.admits(frameID: sampleFrameID, capturedAt: sampleCapturedAt, now: .now)
 				else { continue }
+				let action = challenge.action
 				let wasReturningToRest = challenge.isReturningToRest
 				let consumption = challenge.consume(sample)
 				if consumption.poseSourceInvalidated {
@@ -1408,6 +1577,7 @@ final class LockWatcher {
 				}
 				guard challenge.isComplete else { continue }
 				challengeGate.completeAction()
+				confirmLookIfNeeded(action)
 				if !challengeGate.isVerified {
 					challenge.next()
 					continue
@@ -1418,7 +1588,8 @@ final class LockWatcher {
 					movementLookPasses = challenge.lookPassLog
 				}
 			}
-			guard heldMatch, challengeGate.isVerified else { continue }
+			guard heldMatch, challengeGate.isVerified,
+				lookConfirmedUntil.map({ ContinuousClock.now >= $0 }) ?? true else { continue }
 
 			func evidenceIsCurrent() -> Bool {
 				let now = ContinuousClock.now
@@ -1447,9 +1618,9 @@ final class LockWatcher {
 			} catch {
 				report(.submissionStopped)
 				didSubmitPassword = false
-				lockout.recordFailure()
-				StateBroadcast.post(lockout.isLockedOut ? .lockedOut : .failed)
-				updateCapsule("notRecognised", .notRecognised)
+				// The face matched; typing failed. Not a failed face, so not counted.
+				StateBroadcast.post(.failed)
+				updateCapsule("unavailable", .unavailable("Couldn’t type your password. Use it to unlock."))
 				Self.logger.error("Unlock failed: \(error.localizedDescription)")
 				return
 			}
@@ -1473,9 +1644,23 @@ final class LockWatcher {
 				Self.logger.notice("Screen did not unlock after submitting; withdrawing.")
 				self.submissionID = nil
 				self.didSubmitPassword = false
-				self.lockout.recordFailure()
-				StateBroadcast.post(self.lockout.isLockedOut ? .lockedOut : .failed)
 				self.capsule.hide()
+				// The face already passed, so the usual reason is a saved password that no
+				// longer matches the account. Check once, off the main thread; if so, stop
+				// typing it and don't count the face against the lockout.
+				Task.detached(priority: .userInitiated) {
+					let stillMatches = (try? PasswordVault.password()).flatMap { $0 }.map { PasswordVault.verify($0) } ?? true
+					await MainActor.run {
+						if stillMatches {
+							self.lockout.recordFailure()
+						} else {
+							PasswordVault.isStale = true
+							StalePasswordNotice.post()
+							Self.logger.error("The saved password no longer matches this account; Gaze stops typing it until a new one is saved.")
+						}
+						StateBroadcast.post(self.lockout.isLockedOut ? .lockedOut : .failed)
+					}
+				}
 			}
 			return
 		}

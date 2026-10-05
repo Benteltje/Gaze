@@ -329,6 +329,10 @@ final class AppServices {
 	private var lockScreenShoot: LockScreenShoot?
 	private var appLockPreview: AppLockShield?
 	private var browserApprovals: GazeBrowserApproval?
+	private var adminPrompts: AdminPromptApproval?
+	private var sudoApprovals: SudoApproval?
+	/// One face check for admin prompts, sudo and Shortcuts, so two can never overlap.
+	private var faceApprovals: FaceApprovalCheck?
 	private var appLockMachine: AppLockStateMachine?
 	private var appLockWatcher: AppLockWatcher?
 	private var appLockShield: AppLockShield?
@@ -443,6 +447,22 @@ final class AppServices {
 			let service = GazeBrowserApproval(store: store, lockout: lockout)
 			service.start()
 			browserApprovals = service
+		}
+		// Polls only while the setting is on; it checks the setting on every tick.
+		let check = faceApprovals ?? FaceApprovalCheck(store: store, lockout: lockout)
+		faceApprovals = check
+		FaceApprovalCenter.check = check
+		if adminPrompts == nil {
+			let service = AdminPromptApproval(store: store, lockout: lockout, check: check)
+			service.start()
+			adminPrompts = service
+		}
+		// Always listening, so the Settings switch works without a restart. Only
+		// /usr/bin/sudo running as root can connect, and it only does once installed.
+		if sudoApprovals == nil {
+			let service = SudoApproval(check: check)
+			service.start()
+			sudoApprovals = service
 		}
 		// Tear down whatever was running before switching.
 		lockWatcher?.stop()

@@ -1,3 +1,4 @@
+import AppKit
 @preconcurrency import AVFoundation
 import CoreImage
 import Observation
@@ -53,9 +54,11 @@ struct FaceSample: @unchecked Sendable {
 @MainActor
 final class CameraController {
 
-	/// Whether the lock screen may ask for Follow the light: movements on, and it not
-	/// switched off. Read from defaults so the camera needs no Preferences.
+	/// Whether the lock screen may ask for Follow the light: movements on, it not
+	/// switched off, and Reduce Motion off (Reduce Motion swaps the light for another
+	/// movement). Read from defaults so the camera needs no Preferences.
 	static var followLightOffered: Bool {
+		guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return false }
 		let defaults = UserDefaults.standard
 		guard defaults.integer(forKey: "unlockMovementCount") > 0 || defaults.object(forKey: "unlockMovementCount") == nil
 		else { return false }

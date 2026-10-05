@@ -39,6 +39,14 @@ final class NotchCapsuleController {
 	/// hosting view's root would reset the view's state and animate nothing.
 	private let model = NotchCapsuleModel()
 
+	/// False for the panel shown on an unlocked desktop (admin prompts): there is no
+	/// lock-screen space to move it into, and it should sit with ordinary windows.
+	private let usesLockScreenSpace: Bool
+
+	init(usesLockScreenSpace: Bool = true) {
+		self.usesLockScreenSpace = usesLockScreenSpace
+	}
+
 	/// Last build outcome, so the missing-space state is readable from Settings diagnostics rather than the log alone.
 	private(set) static var lastBuildOutcome: (message: String, at: Date)?
 
@@ -86,7 +94,7 @@ final class NotchCapsuleController {
 			"show: window \(window.windowNumber) level \(window.level.rawValue) visible \(window.isVisible) locked \(Self.screenIsLocked())"
 		)
 		// After ordering in, never before: the window number does not exist until then.
-		LockScreenSpace.shared.adopt(window)
+		if usesLockScreenSpace { LockScreenSpace.shared.adopt(window) }
 		syncLookTarget(for: phase)
 
 		// The window itself does not fade — the panel grows out of the notch instead.
@@ -146,6 +154,8 @@ final class NotchCapsuleController {
 			text = "Face not recognised"
 		case .spoofRejected:
 			text = "That looked like a photo or a screen"
+		case .unavailable(let message):
+			text = message
 		case .challenge(_, _, _, _, _, let isReturningToRest) where isReturningToRest:
 			text = "Now look back at the screen"
 		case .challenge(let prompt, _, _, _, _, _):

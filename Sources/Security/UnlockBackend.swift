@@ -129,6 +129,9 @@ struct KeystrokeUnlockBackend: UnlockBackend {
 			guard try PasswordVault.containsPassword() else {
 				return .needsSetup("Gaze needs your account password to unlock the Mac.")
 			}
+			guard !PasswordVault.isStale else {
+				return .needsSetup("Your Mac password changed. Choose Change to save the new one, and Gaze will unlock again.")
+			}
 		} catch {
 			return .unavailable("The saved account password could not be accessed. Check Keychain access and try again.")
 		}
@@ -144,6 +147,7 @@ struct KeystrokeUnlockBackend: UnlockBackend {
 
 	@MainActor func submitPassword(if stillVerified: () -> Bool, evidenceIsCurrent: () -> Bool) throws {
 		try PasswordReplaySafety.requireEnabled()
+		guard !PasswordVault.isStale else { throw UnlockError.noPassword }
 		guard stillVerified() else { throw UnlockError.verificationRequired }
 		try LockScreenPasswordSubmission.submit(
 			readPassword: PasswordVault.password,

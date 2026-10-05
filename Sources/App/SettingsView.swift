@@ -133,6 +133,8 @@ struct SettingsView: View {
 	@State private var lockoutError: String?
 	@State private var accessibilityGranted = SetupPermissionStatus.current.isReady
 	@State private var cameraGranted = Self.cameraAuthorized
+	@State private var inputMonitoringGranted = SpaceKeyMonitor.isAllowed
+	@State private var sudoInstalled = SudoApproval.isInstalled
 	@State private var loginItemEnabled = LoginItem.isEnabled
 	@State private var loginItemNeedsApproval = LoginItem.needsApproval
 	@State private var loginItemError: String?
@@ -838,6 +840,7 @@ struct SettingsView: View {
 		hasStoredPassword = PasswordVault.hasPassword
 		cameraGranted = Self.cameraAuthorized
 		accessibilityGranted = SetupPermissionStatus.current.isReady
+		inputMonitoringGranted = SpaceKeyMonitor.isAllowed
 		appLockEnabled = appLock.isEnabled
 		lockedApps = appLock.lockedBundleIDs.sorted()
 		relockPolicy = appLock.relockPolicy
@@ -1022,7 +1025,7 @@ struct SettingsView: View {
 						.font(.system(size: 30, weight: .light))
 						.foregroundStyle(Theme.secondaryLabel)
 						.accessibilityHidden(true)
-					Text("No Locked Apps")
+					Text("No locked apps")
 						.font(.system(size: 15, weight: .semibold))
 						.foregroundStyle(Theme.label)
 					Text("Add an app, like Messages or Photos, to ask for your face before it opens.")
@@ -1248,8 +1251,6 @@ struct SettingsView: View {
 		"When enabled, Gaze enters your stored account password after verification. Password and Touch ID remain available. "
 			+ "The password is stored on this Mac in recoverable form so Gaze can type it. Turning this off does not delete the stored password; use Revoke to remove it. "
 			+ "Use Test Recognition to practice without unlocking anything."
-			+ "\n\nLast lock-screen attempt: " + LockScanDiagnostics.shared.summary
-			+ "\n\nCapsule: " + capsuleOutcomeLine
 	}
 
 	private var capsuleOutcomeLine: String {
@@ -1295,8 +1296,8 @@ struct SettingsView: View {
 	private var retainedPasswordRow: some View {
 		VStack(spacing: 0) {
 			SettingRow(
-				title: "Stored account password",
-				detail: "Kept from Unlock my Mac. Gaze won't use it to unlock in this mode.",
+				title: "Account password",
+				detail: "Stored earlier. Gaze doesn’t use it to unlock in this mode.",
 				symbol: "key.fill"
 			) {
 				HStack(spacing: 6) {
@@ -1413,7 +1414,7 @@ struct SettingsView: View {
 	private var permissionsSection: some View {
 		SettingsSection(
 			title: "Permissions",
-			info: "Gaze needs the camera to see you and Accessibility to type your password."
+			info: "Gaze needs the camera to see you and Accessibility to type your password. Input Monitoring is optional and only lets Space try again."
 		) {
 			SettingRow(
 				title: "Camera",
@@ -1447,6 +1448,27 @@ struct SettingsView: View {
 						.gazeButton()
 						.fixedSize()
 				}
+			}
+
+			RowDivider(inset: 0)
+			// Optional: without it everything works except Space to try again.
+			SettingRow(
+				title: "Input Monitoring",
+				detail: inputMonitoringGranted
+					? "Allowed. Press Space on the lock screen to try again."
+					: "Optional. Lets you press Space on the lock screen to try again.",
+				symbol: "keyboard"
+			) {
+				Button(inputMonitoringGranted ? "Open Settings" : "Allow…") {
+					// The first ask shows macOS's own prompt; after that, only System
+					// Settings can change it.
+					if inputMonitoringGranted || !SpaceKeyMonitor.requestAccess() {
+						openPrivacySettings("Privacy_ListenEvent")
+					}
+					inputMonitoringGranted = SpaceKeyMonitor.isAllowed
+				}
+				.gazeButton()
+				.fixedSize()
 			}
 		}
 	}
@@ -1545,7 +1567,7 @@ struct SettingsView: View {
 		} else {
 			SettingToggle(
 				title: "Only trust the built-in camera",
-				detail: "Required for password release; the enrolled camera stays pinned",
+				detail: "Each face only works on the camera it was set up with",
 				symbol: "camera.fill",
 				isEnabled: settings.unlockBackend != .keystroke,
 				isOn: Binding(get: { settings.unlockBackend == .keystroke || settings.requireBuiltInCamera },
@@ -1621,6 +1643,42 @@ struct SettingsView: View {
 				isEnabled: BiometricGate.isAvailable,
 				isOn: bind(\.touchIDFallback))
 		}
+
+			RowDivider()
+			SettingToggle(
+				title: "Approve admin prompts with your face",
+				detail: "When macOS asks for your password to make a change, Gaze fills it in after a face check.\nNodding gives that app full control of your Mac. Gaze never fills prompts for scripts or Terminal.",
+				symbol: "lock.shield",
+				isOn: Binding(
+					get: { settings.approveAdminPrompts },
+					set: { on in
+						guard on else { settings.approveAdminPrompts = false; return }
+						// Turning it on always asks: it lets a face approve system changes.
+						Task { @MainActor in
+							if await BiometricGate.require(.approveAdminPrompts) { settings.approveAdminPrompts = true }
+						}
+					}))
+
+			RowDivider()
+			SettingToggle(
+				title: "Approve sudo with your face",
+				detail: sudoInstalled
+					? "In Terminal, Gaze shows the command and asks you to nod."
+					: "In Terminal, Gaze shows the command and asks you to nod. Needs your password once to install.",
+				symbol: "terminal",
+				isOn: Binding(
+					get: { sudoInstalled },
+					set: { on in
+						Task { @MainActor in
+							if on {
+								guard await BiometricGate.require(.approveAdminPrompts) else { return }
+								try? await SudoApproval.install()
+							} else {
+								try? await SudoApproval.uninstall()
+							}
+							sudoInstalled = SudoApproval.isInstalled
+						}
+					}))
 		}
 	}
 
@@ -2044,8 +2102,8 @@ private struct SettingsCreditsPane: View {
 			// People without a public page (nautey) get no link rather than an invented one.
 			SettingsSection(
 				title: "Who helped",
-				footer: "One borrowed model, one app this one learned its shape from, "
-					+ "and six people who made it better."
+				footer: "One borrowed model, one app that showed the way, "
+					+ "and the people who made it better."
 			) {
 				creditRow(
 					name: "Harsh Vardhan Goswami",
@@ -2282,6 +2340,7 @@ private struct SettingsCreditsPane: View {
 private struct SettingsAboutPane: View {
 	let store: FaceEnrollmentStore
 	let updates: RepoRevealHelper
+	@State private var savingDiagnostics = false
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: Theme.sectionSpacing) {
@@ -2299,9 +2358,24 @@ private struct SettingsAboutPane: View {
 				}
 				RowDivider(inset: Theme.rowInset)
 				SettingRow(title: "Recognition model") {
-					Text(store.embedder.identifier)
+					Text("ArcFace, on this Mac")
 						.font(Typography.control)
 						.foregroundStyle(Theme.secondaryLabel)
+				}
+				RowDivider(inset: Theme.rowInset)
+				SettingRow(title: "Diagnostics", detail: "Saves a report to your Desktop to send when something isn’t working. It never includes your password or photos.") {
+					Button(savingDiagnostics ? "Saving…" : "Save Diagnostics") {
+						savingDiagnostics = true
+						Task {
+							if let url = try? await GazeDiagnostics.save() {
+								NSWorkspace.shared.activateFileViewerSelecting([url])
+							}
+							savingDiagnostics = false
+						}
+					}
+					.gazeButton()
+					.disabled(savingDiagnostics)
+					.fixedSize()
 				}
 			}
 

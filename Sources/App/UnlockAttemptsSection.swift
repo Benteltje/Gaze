@@ -29,10 +29,21 @@ struct UnlockAttemptsSection: View {
 				}
 			}
 
+			let summary = UnlockAttemptSummary(attempts: log.attempts, now: Date())
+			if summary.total > 0 {
+				RowDivider()
+				summaryLine(summary)
+				if let tip = summary.tip {
+					RowDivider()
+					StatusLine(kind: .ok, message: tip)
+				}
+			}
+
 			let recent = Array(log.attempts.prefix(10))
 			RowDivider()
 			if recent.isEmpty {
-				SettingRow(title: "No attempts yet", symbol: "clock.arrow.circlepath") { EmptyView() }
+				SettingRow(title: "No attempts yet", detail: "Lock your Mac and look at it. Attempts show up here.",
+					symbol: "clock.arrow.circlepath") { EmptyView() }
 			} else {
 				// Collapsed by default: the list is for when something went wrong, not
 				// something to scroll past every time. A row like its neighbours, so the
@@ -40,7 +51,7 @@ struct UnlockAttemptsSection: View {
 				Button {
 					withAnimation(.snappy) { showsAttempts.toggle() }
 				} label: {
-					SettingRow(title: "Recent Attempts", symbol: "clock.arrow.circlepath") {
+					SettingRow(title: "Recent attempts", symbol: "clock.arrow.circlepath") {
 						HStack(spacing: 8) {
 							Text("\(log.attempts.count)")
 								.font(Typography.detail.monospacedDigit())
@@ -123,6 +134,22 @@ struct UnlockAttemptsSection: View {
 		}
 	}
 
+	/// One line for the last 7 days, in the section's secondary style.
+	private func summaryLine(_ summary: UnlockAttemptSummary) -> some View {
+		let tries = summary.total == 1 ? "1 attempt this week" : "\(summary.total) attempts this week"
+		let percent = Int((Double(summary.gazeUnlocked) * 100 / Double(summary.total)).rounded())
+		var line = "\(tries) · \(percent)% unlocked by Gaze"
+		if let median = summary.medianGazeDuration {
+			line += " · typically \(String(format: "%.1f", median)) s"
+		}
+		return Text(line)
+			.font(Typography.detail)
+			.foregroundStyle(Theme.secondaryLabel)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.padding(.horizontal, Theme.rowInset)
+			.padding(.vertical, 8)
+	}
+
 	/// One caption per non-empty group, in the section's own caption style.
 	private func groupHeader(_ title: String) -> some View {
 		Text(title)
@@ -179,17 +206,8 @@ struct UnlockAttemptsSection: View {
 	private static func detail(for attempt: UnlockAttempt) -> String? {
 		let when = relative.localizedString(for: min(attempt.date, Date()), relativeTo: Date())
 		if attempt.result == .unlocked, let duration = attempt.duration {
-			var line = "\(when) · in \(String(format: "%.1f", duration)) s"
-			// Where the time went, so a slow unlock says which part was slow.
-			if let steps = attempt.steps {
-				var parts = [("camera", steps.camera), ("face", steps.recognise), ("checks", steps.check), ("macOS", steps.macOS)]
-					.compactMap { name, value in value.map { "\(name) \(String(format: "%.1f", $0))" } }
-				if let movement = steps.movement {
-					parts.append("movement \(String(format: "%.1f", movement))")
-				}
-				if !parts.isEmpty { line += " (" + parts.joined(separator: ", ") + ")" }
-			}
-			return line
+			// The per-stage timings stay in Save Diagnostics; here, one number.
+			return "\(when) · in \(String(format: "%.1f", duration)) s"
 		}
 		if let reason = attempt.reason {
 			return "\(when) · \(Self.reasonText(reason))"

@@ -167,6 +167,7 @@ enum EnrollmentStorageTests {
 	}
 
 	static func main() {
+		FaceEnrollmentStore.learnInterval = 0
 		// Absent enrollment: empty faces, no corruption, exactly one vault read.
 		SecureVault.reset()
 		var store = FaceEnrollmentStore()
@@ -315,9 +316,9 @@ enum EnrollmentStorageTests {
 			"A failed learn write reverts the print")
 		SecureVault.storeError = nil
 
-		// Learned prints participate in matching: originals that do not match the
-		// live print alone, matched through what was learned. Both sets need two
-		// supporting prints, per the matcher's multi-print rule.
+		// Learned prints alone can never authorise a match: originals that do not
+		// match the live print stay unmatched however many learned prints agree, so a
+		// chain of learned prints cannot drift onto someone else.
 		let originalsOnly = FaceEnrollment(
 			name: "Originals", prints: [fp([0, 1]), fp([0, 1])],
 			embedder: "fixture-embedder-v1", cameraID: "camera-1")
@@ -332,7 +333,7 @@ enum EnrollmentStorageTests {
 			cameraID: "camera-1")
 		SecureVault.reset(plaintext: try! JSONEncoder().encode([withLearned]))
 		store = FaceEnrollmentStore()
-		check(store.matches(FaceSample()).matched, "Learned prints participate in matching")
+		check(!store.matches(FaceSample()).matched, "Learned prints alone never authorise a match")
 
 		// Records written before learned prints and mask matching existed carry
 		// neither key; both must default to empty rather than failing the decode.

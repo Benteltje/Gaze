@@ -183,7 +183,7 @@ enum UnlockFlowTests {
 		}
 		// lookRight moves the pupils toward image -x, lookLeft toward +x.
 		let followed = pursue(.lookRight) { t in -0.1 * LivenessChallenge.lookTargetPosition(elapsed: t) + 0.005 * sin(t * 40) }
-		check(followed.guidancePrompt == "Follow the light" || followed.isComplete, "look action prompts to follow the light")
+		check(followed.guidancePrompt == "Follow the light with your eyes" || followed.isComplete, "look action prompts to follow the light")
 		check(followed.isComplete, "eyes following the light for a pass complete lookRight")
 		let followedLeft = pursue(.lookLeft) { t in 0.1 * LivenessChallenge.lookTargetPosition(elapsed: t) }
 		check(followedLeft.isComplete, "eyes following the light complete lookLeft")
@@ -230,7 +230,7 @@ enum UnlockFlowTests {
 			for _ in 0..<2 { sample(measured, yaw: yaw, pitch: pitch) }
 			check(measured.isReturningToRest && !measured.isComplete, "diagnostic reads do not change the required excursion")
 			let returned = measured.poseMeasurement(yaw: 0.2, pitch: -0.1)!
-			check(returned.offset == 0 && returned.returnTolerance == abs(returned.target) / 3,
+			check(returned.offset == 0 && returned.returnTolerance == measurement.returnTolerance,
 				"return diagnostics use the same baseline and tolerance as the movement check")
 			sample(measured, yaw: 0.2, pitch: -0.1)
 			check(measured.isComplete, "return to a nonzero starting pose still completes normally")
@@ -246,7 +246,94 @@ enum UnlockFlowTests {
 		check(narrow.isReturningToRest, "narrow resting eyes closing counts as blink movement")
 		sample(narrow, eyes: 0.13)
 		check(narrow.isComplete, "narrow-eyed blink completes on reopening")
+		nodAcceptance()
+		movementInterruptionGrace()
+		lookLeadIn()
 		print("PASS: \(checks) unlock-flow checks; synthetic measurements only, no camera or credential access, no input posted.")
+	}
+
+	/// A natural nod (chin down about 10 degrees, then back) passes, measured from the
+	/// pose held when the challenge started. The old 0.18 rad entry missed it.
+	static func nodAcceptance() {
+		let gentle = LivenessChallenge(action: .nod)
+		for _ in 0..<3 { gentle.prepareBaseline(yaw: 0, pitch: 0.05, eyes: 0.3, mouth: 0.1) }
+		for pitch in [0.09, 0.15, 0.225, 0.225] { sample(gentle, pitch: pitch) }
+		check(gentle.isReturningToRest && !gentle.isComplete, "a 10 degree nod from a tilted start is observed")
+		sample(gentle, pitch: 0.13)
+		check(!gentle.isComplete, "halfway back is not yet back")
+		sample(gentle, pitch: 0.09)
+		check(gentle.isComplete, "a 10 degree nod completes on return")
+
+		let dip = LivenessChallenge(action: .nod)
+		for _ in 0..<3 { dip.prepareBaseline(yaw: 0, pitch: 0, eyes: 0.3, mouth: 0.1) }
+		for pitch in [0.05, 0.10, 0.10, 0.04, 0] { sample(dip, pitch: pitch) }
+		check(!dip.isReturningToRest && !dip.isComplete, "a 6 degree dip is not a nod")
+		let blip = LivenessChallenge(action: .nod)
+		for _ in 0..<3 { blip.prepareBaseline(yaw: 0, pitch: 0, eyes: 0.3, mouth: 0.1) }
+		for pitch in [0.2, 0, 0.2, 0] { sample(blip, pitch: pitch) }
+		check(!blip.isComplete, "single-frame pitch spikes are not a nod")
+
+		let moving = LivenessChallenge(action: .nod)
+		check(!moving.isMovingAsAsked(FacePose(yaw: 0, pitch: 0.2, roll: 0)), "no baseline, no movement")
+		for _ in 0..<3 { moving.prepareBaseline(yaw: 0, pitch: 0, eyes: 0.3, mouth: 0.1) }
+		check(moving.isMovingAsAsked(FacePose(yaw: 0, pitch: 0.10, roll: 0)), "chin part way down is the nod in progress")
+		check(!moving.isMovingAsAsked(FacePose(yaw: 0, pitch: 0.03, roll: 0)), "a head at rest is not mid-nod")
+		check(!moving.isMovingAsAsked(FacePose(yaw: 0, pitch: -0.15, roll: 0)), "chin up is not the nod asked for")
+		check(!moving.isMovingAsAsked(FacePose(yaw: 0, pitch: 0.15, roll: 0, pitchSource: .landmarkEstimate)),
+			"another estimator's pitch is not movement")
+		let turning = LivenessChallenge(action: .turnRight)
+		for _ in 0..<3 { turning.prepareBaseline(yaw: 0, pitch: 0, eyes: 0.3, mouth: 0.1) }
+		check(turning.isMovingAsAsked(FacePose(yaw: -0.2, pitch: 0, roll: 0))
+			&& !turning.isMovingAsAsked(FacePose(yaw: 0.2, pitch: 0, roll: 0)), "a turn is movement only toward its side")
+		let blinking = LivenessChallenge(action: .blink)
+		for _ in 0..<3 { blinking.prepareBaseline(yaw: 0, pitch: 0, eyes: 0.3, mouth: 0.1) }
+		check(!blinking.isMovingAsAsked(FacePose(yaw: 0, pitch: 0.3, roll: 0)), "pose never stands in for a blink")
+	}
+
+	/// A presented movement rides out a short loss of the face, never a long one.
+	static func movementInterruptionGrace() {
+		let start = ContinuousClock.now
+		func at(_ milliseconds: Int) -> ContinuousClock.Instant { start.advanced(by: .milliseconds(milliseconds)) }
+		var gate = UnlockChallengeGate(requiredActions: 1)
+		check(!gate.tolerates(interruptionAt: at(0)), "nothing presented, nothing to ride out")
+		gate.present(at: at(0), frameID: 1)
+		check(gate.tolerates(interruptionAt: at(500)), "a brief loss mid-movement is ridden out")
+		check(gate.tolerates(interruptionAt: at(1_200)), "grace counts from the first lost frame")
+		check(!gate.tolerates(interruptionAt: at(1_350)), "lost past the grace withdraws the movement")
+		gate.resume()
+		check(gate.tolerates(interruptionAt: at(1_400)), "a verified face back starts a fresh grace")
+		check(gate.isPresented && gate.completedActions == 0, "riding out an interruption admits no evidence")
+		check(gate.admits(frameID: 2, capturedAt: at(1_500), now: at(1_500)), "frames still need the gate's own checks")
+		gate.completeAction()
+		check(gate.isVerified && !gate.tolerates(interruptionAt: at(1_600)), "a finished movement has nothing to ride out")
+		var late = UnlockChallengeGate(requiredActions: 1)
+		late.present(at: at(0), frameID: 1)
+		check(!late.tolerates(interruptionAt: at(8_000)), "grace never outlasts the response timeout")
+		check(late.reset() && !late.tolerates(interruptionAt: at(100)), "reset ends the grace")
+	}
+
+	/// Follow the light waits at the centre for the lead-in before anything moves or is scored.
+	static func lookLeadIn() {
+		var time = 50.0
+		let challenge = LivenessChallenge(action: .lookRight)
+		challenge.clock = { time }
+		LivenessChallenge.lookOrigin = nil
+		LivenessChallenge.lookOverlayWaiting = true
+		LivenessChallenge.lookLeadInUntil = time + LivenessChallenge.lookLeadIn
+		defer {
+			LivenessChallenge.lookOrigin = nil
+			LivenessChallenge.lookOverlayWaiting = false
+			LivenessChallenge.lookLeadInUntil = nil
+		}
+		for _ in 0..<3 { challenge.consume(yaw: 0, pitch: 0, eyes: 0.3, mouth: 0.1, gaze: 0, gazeY: 0) }
+		time += 0.5
+		challenge.consume(yaw: 0, pitch: 0, eyes: 0.3, mouth: 0.1, gaze: 0, gazeY: 0)
+		check(LivenessChallenge.lookOrigin == nil && LivenessChallenge.lookOverlayWaiting,
+			"the light holds at the centre through the lead-in")
+		time += 0.4
+		challenge.consume(yaw: 0, pitch: 0, eyes: 0.3, mouth: 0.1, gaze: 0, gazeY: 0)
+		check(LivenessChallenge.lookOrigin == time && !LivenessChallenge.lookOverlayWaiting,
+			"the light starts once the lead-in is over")
 	}
 
 	static func sample(_ challenge: LivenessChallenge, yaw: Double = 0, pitch: Double = 0,

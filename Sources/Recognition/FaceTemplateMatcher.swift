@@ -13,11 +13,16 @@ struct FaceTemplateMatcher: Sendable {
 
 	private let embedder: any FaceEmbedder
 	private let templates: [[Faceprint]]
+	/// How many leading prints of each template were enrolled; the rest were learned.
+	/// A match may never rest on learned prints alone, or a run of them could drift
+	/// toward someone who merely looks alike.
+	private let originalCounts: [Int]
 	private let usesCosine: Bool
 	private let isValid: Bool
 
-	init(templates: [[Faceprint]], embedder: any FaceEmbedder) {
+	init(templates: [[Faceprint]], originalCounts: [Int]? = nil, embedder: any FaceEmbedder) {
 		self.embedder = embedder
+		self.originalCounts = originalCounts ?? templates.map(\.count)
 		usesCosine = embedder.usesCosineSimilarity
 		var valid = true
 		self.templates = templates.map { prints in
@@ -47,7 +52,9 @@ struct FaceTemplateMatcher: Sendable {
 			}
 			var first: Float = -1
 			var second: Float = -1
-			for print in prints {
+			var bestOriginal: Float = -1
+			let originals = index < originalCounts.count ? originalCounts[index] : prints.count
+			for (position, print) in prints.enumerated() {
 				let score: Float
 				if usesCosine {
 					var dot: Float = 0
@@ -61,12 +68,13 @@ struct FaceTemplateMatcher: Sendable {
 					throw Failure.invalidSimilarity
 				}
 				let bounded = min(1, max(-1, score))
+				if position < originals { bestOriginal = max(bestOriginal, bounded) }
 				if bounded > first { second = first; first = bounded }
 				else if bounded > second { second = bounded }
 			}
 			// A single unusually high template cannot authorize a multi-print enrollment.
 			// Never pool support across different enrolled identities.
-			let supported = prints.count > 1 ? second : first
+			let supported = min(prints.count > 1 ? second : first, bestOriginal)
 			if supported > (best?.score ?? -2) {
 				best = Match(index: index, score: max(0, supported))
 			}

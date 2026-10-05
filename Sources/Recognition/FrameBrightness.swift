@@ -40,12 +40,12 @@ enum SceneBrightness {
 		guard let reading = current(now: now), reading < darkThreshold else { return false }
 		return streak.withLock { state in
 			guard let firstAt = state.firstAt, let darkSince = state.darkSince else { return false }
-			// 0.9 s settle and 0.5 s of darkness, down from 1.5 s and 1 s: the light took
-			// 2.5 s to come on at night, most of a dark-room unlock. The camera's exposure
-			// has settled well within 0.9 s, so bright rooms still stay dark.
-			let settledAt = firstAt.advanced(by: .milliseconds(900))
+			// 0.4 s settle and 0.25 s of darkness: the light came on 1.4 s into a dark-room
+			// unlock, spent on frames too dark to use. Auto-exposure has mostly settled by
+			// 0.4 s; a bright room that read dark for a moment still clears the streak.
+			let settledAt = firstAt.advanced(by: .milliseconds(400))
 			let from = max(darkSince, settledAt)
-			return now >= from && from.duration(to: now) >= .milliseconds(500)
+			return now >= from && from.duration(to: now) >= .milliseconds(250)
 		}
 	}
 

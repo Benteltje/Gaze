@@ -17,6 +17,15 @@ enum PasswordVault {
 		(try? Keychain.exists(account)) ?? false
 	}
 
+	/// Set when the saved password stopped matching the account (changed elsewhere).
+	/// Gaze stops typing it until a new one is saved: a wrong password typed at every
+	/// lock only spends the user's failed-login attempts.
+	private static let staleKey = "storedPasswordStale"
+	static var isStale: Bool {
+		get { UserDefaults.standard.bool(forKey: staleKey) }
+		set { UserDefaults.standard.set(newValue, forKey: staleKey) }
+	}
+
 	static func containsPassword() throws -> Bool {
 		try Keychain.exists(account)
 	}
@@ -27,6 +36,7 @@ enum PasswordVault {
 	static func store(_ password: String, forUser user: String = NSUserName()) throws -> Bool {
 		guard verify(password, user: user) else { return false }
 		try SecureVault.store(Record(password: password), as: account)
+		isStale = false
 		logger.notice("Stored account password for keystroke unlock.")
 		return true
 	}

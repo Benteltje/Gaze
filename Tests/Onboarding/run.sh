@@ -46,6 +46,7 @@ xcrun swiftc -parse-as-library -sdk "$SDK" -target "$(host_target)" \
 	"$ROOT/Sources/Setup/SetupCaptureStep.swift" \
 	"$ROOT/Sources/Setup/SetupPasswordStep.swift" \
 	"$ROOT/Sources/Setup/SetupPermissionStep.swift" \
+	"$ROOT/Sources/Security/SpaceKeyMonitor.swift" \
 	"$ROOT/Sources/Setup/SetupDoneStep.swift" \
 	"$ROOT/Tests/Support/CompanionCapture.swift" \
 	-o "$APP/Contents/MacOS/OnboardingReview"

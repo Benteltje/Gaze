@@ -51,6 +51,12 @@ enum IrisLocator {
 	/// Nil when the model is missing or no eye could be read.
 	static func horizontalOffset(_ sample: FaceSample) -> Double? { gaze(sample)?.x }
 
+	/// Drops the remembered camera frame. Holding it kept the camera's buffer pool
+	/// alive between locks, about 19 MB doing nothing.
+	static func forgetFrame() {
+		lock.withLock { lastBuffer = nil; lastResult = nil }
+	}
+
 	static func gaze(_ sample: FaceSample) -> Gaze? {
 		let buffer = sample.pixelBuffer
 		if let cached = lock.withLock({ lastBuffer === buffer ? Optional(lastResult) : nil }) { return cached }

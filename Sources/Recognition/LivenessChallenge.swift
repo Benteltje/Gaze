@@ -39,7 +39,7 @@ final class LivenessChallenge {
 			case .nod: return "Nod your head"
 			case .blink: return "Blink"
 			case .openMouth: return "Open your mouth"
-			case .lookLeft, .lookRight: return "Follow the light"
+			case .lookLeft, .lookRight: return "Follow the light with your eyes"
 			}
 		}
 
@@ -101,7 +101,13 @@ final class LivenessChallenge {
 
 	// How far counts. Radians for pose; landmark ratios for eyes and mouth.
 	private static let turnDelta = 0.30      // head clearly turned from where it started
-	private static let nodDelta = 0.18       // chin dropped from where it started
+	// A natural nod drops the chin 10 to 20 degrees. 0.18 rad (10.3 degrees) missed the
+	// gentle end of that; 0.13 rad (7.4 degrees), held for two frames, still rules out
+	// pose noise, which stays within a couple of degrees.
+	private static let nodDelta = 0.13       // chin dropped from where it started
+	/// How close to the starting pitch counts as back. Fixed rather than a third of
+	/// `nodDelta`, so lowering the entry left the hysteresis gap unchanged.
+	private static let nodReturn = 0.06
 	private static let headStillLimit = 8 * Double.pi / 180  // head may not wander during a look
 	private static let nilGazeLimit = 15     // unmeasurable frames before offering a non-look action
 
@@ -125,6 +131,12 @@ final class LivenessChallenge {
 	static var lookOrigin: TimeInterval?
 	/// True while the lock-screen light is up and waiting for the challenge to start it.
 	static var lookOverlayWaiting = false
+	/// How long the light waits at the centre after the prompt appears, so it never
+	/// starts moving before the person has read what to do.
+	static let lookLeadIn = 0.8
+	/// Uptime before which a waiting light may not start, set by the overlay with the
+	/// prompt. Nil elsewhere, where there is no light to lead in.
+	static var lookLeadInUntil: TimeInterval?
 
 	/// Where the light is, 0 at the centre to 1 at the edge, `elapsed` seconds into
 	/// the repeating path: rest 0.1 s, glide out 0.45 s, hold 0.2 s, glide back
@@ -258,7 +270,18 @@ final class LivenessChallenge {
 			baselineSource != .unavailable, valueSource != .unavailable,
 			baselineSource == valueSource else { return nil }
 		return PoseMeasurement(offset: value - baseline, target: target,
-			returnTolerance: abs(target) / 3)
+			returnTolerance: action == .nod ? Self.nodReturn : abs(target) / 3)
+	}
+
+	/// True when this pose is off its starting point toward the requested side, past the
+	/// return window: the head is mid-movement the way it was asked to move. The unlock
+	/// loop uses it to tell a face that scores low because it is nodding or turning from
+	/// one that scores low because it is someone else. False for actions without a
+	/// pose baseline and across estimators.
+	func isMovingAsAsked(_ pose: FacePose) -> Bool {
+		guard !isComplete, let measured = poseMeasurement(yaw: pose.yaw, pitch: pose.pitch,
+			yawSource: pose.yawSource, pitchSource: pose.pitchSource) else { return false }
+		return measured.offset * measured.target > 0 && abs(measured.offset) > measured.returnTolerance
 	}
 
 	/// The movements people can choose between in Settings. Turn covers both
@@ -302,13 +325,26 @@ final class LivenessChallenge {
 			?? Action.allCases.filter { $0 != action && !$0.isLook }.randomElement() ?? .blink
 	}
 
-	init(action: Action? = nil) {
-		self.action = action ?? Self.offeredActions.randomElement() ?? .blink
+	/// False for checks that have no light to follow, like the approval panels:
+	/// they only ever ask for movements the camera can see without one.
+	private let allowsLook: Bool
+
+	/// The offered movements this check can use, never empty.
+	private var choices: [Action] {
+		guard !allowsLook else { return Self.offeredActions }
+		let still = Self.offeredActions.filter { !$0.isLook }
+		return still.isEmpty ? Action.allCases.filter { !$0.isLook } : still
+	}
+
+	init(action: Action? = nil, allowsLook: Bool = true) {
+		self.allowsLook = allowsLook
+		let start = allowsLook ? Self.offeredActions : Self.offeredActions.filter { !$0.isLook }
+		self.action = action ?? start.randomElement() ?? .blink
 	}
 
 	/// Pick a fresh random action, different from the current one, and start over.
 	func next() {
-		action = Self.offeredActions.filter { $0 != action }.randomElement() ?? action
+		action = choices.filter { $0 != action }.randomElement() ?? choices.first ?? action
 		reset()
 	}
 
@@ -509,10 +545,10 @@ final class LivenessChallenge {
 		// Verified against the September 15 recording; see docs/internal/CHALLENGE-INVESTIGATION.md.
 		case .turnLeft:
 			return consumeDirectional(yaw, source: yawSource, axis: .yaw,
-				threshold: Self.turnDelta, direction: 1, eyes: eyes, mouth: mouth)
+				threshold: Self.turnDelta, returnTolerance: Self.turnDelta / 3, direction: 1, eyes: eyes, mouth: mouth)
 		case .turnRight:
 			return consumeDirectional(yaw, source: yawSource, axis: .yaw,
-				threshold: Self.turnDelta, direction: -1, eyes: eyes, mouth: mouth)
+				threshold: Self.turnDelta, returnTolerance: Self.turnDelta / 3, direction: -1, eyes: eyes, mouth: mouth)
 		// Same polarity as the turns: looking toward the person's own left shifts
 		// the pupils toward +x in landmark space, matching +yaw.
 		case .lookLeft:
@@ -523,7 +559,7 @@ final class LivenessChallenge {
 				eyes: eyes, mouth: mouth, gaze: gaze)
 		case .nod:
 			return consumeDirectional(pitch, source: pitchSource, axis: .pitch,
-				threshold: Self.nodDelta, direction: 1, eyes: eyes, mouth: mouth)
+				threshold: Self.nodDelta, returnTolerance: Self.nodReturn, direction: 1, eyes: eyes, mouth: mouth)
 		case .blink:
 			guard eyes.map({ $0.isFinite && $0 >= 0 }) ?? true,
 				mouth.map({ $0.isFinite && $0 >= 0 }) ?? true,
@@ -562,7 +598,7 @@ final class LivenessChallenge {
 		}
 	}
 
-	private func consumeDirectional(_ value: Double, source: FacePose.AxisSource, axis: PoseAxis, threshold: Double, direction: Double, eyes: Float?, mouth: Float?) -> ConsumeResult {
+	private func consumeDirectional(_ value: Double, source: FacePose.AxisSource, axis: PoseAxis, threshold: Double, returnTolerance: Double, direction: Double, eyes: Float?, mouth: Float?) -> ConsumeResult {
 		switch axis {
 		case .yaw:
 			guard value.isFinite, source != .unavailable else {
@@ -583,7 +619,7 @@ final class LivenessChallenge {
 			return ConsumeResult()
 		}
 		return consumePose(value, source: source, axis: axis,
-			threshold: threshold, direction: direction)
+			threshold: threshold, returnTolerance: returnTolerance, direction: direction)
 	}
 
 	/// Eye-only detection: the pupils must shift toward the prompted side while the head
@@ -640,6 +676,8 @@ final class LivenessChallenge {
 		}
 		let now = clock()
 		if Self.lookOrigin == nil, Self.lookOverlayWaiting {
+			// The light holds at the centre through the lead-in; nothing is scored yet.
+			if let leadInUntil = Self.lookLeadInUntil, now < leadInUntil { return ConsumeResult() }
 			Self.lookOrigin = now
 			Self.lookOverlayWaiting = false
 		}
@@ -782,7 +820,7 @@ final class LivenessChallenge {
 		return (cov / vt, vv > 0 ? cov / (vv.squareRoot() * vt.squareRoot()) : 0)
 	}
 
-	private func consumePose(_ value: Double, source: FacePose.AxisSource, axis: PoseAxis, threshold: Double, direction: Double) -> ConsumeResult {
+	private func consumePose(_ value: Double, source: FacePose.AxisSource, axis: PoseAxis, threshold: Double, returnTolerance: Double, direction: Double) -> ConsumeResult {
 		let previous: Double?
 		let previousSource: FacePose.AxisSource?
 		switch axis {
@@ -820,7 +858,7 @@ final class LivenessChallenge {
 		if !observedMovement {
 			movementSamples = delta * direction >= threshold ? movementSamples + 1 : 0
 			observedMovement = movementSamples >= 2
-		} else if abs(delta) <= threshold / 3 {
+		} else if abs(delta) <= returnTolerance {
 			isComplete = true
 		}
 		return ConsumeResult()

@@ -23,6 +23,7 @@ enum BiometricGate {
 		case replaceAutofillIdentity = "trust the selected application with a saved autofill password"
 		case toggleAppLock = "lock or unlock an app"
 		case changeAppLock = "change App Lock"
+		case approveAdminPrompts = "fill administrator password prompts with your face"
 	}
 
 	static var isAvailable: Bool {

@@ -17,6 +17,10 @@ final class NotchCapsuleModel {
 		case locked
 		case scanning
 		case notRecognised
+		/// Gaze couldn't check at all: a camera that stopped, a missing model, a lockout,
+		/// a changed password. Its own phase so the panel never says "Try again" about
+		/// something trying again can't fix.
+		case unavailable(String)
 		/// Matched the enrolled face, but the anti-spoof model judged it a fake — a photo
 		/// or a screen held to the camera. Its own phase, not `notRecognised`, because it
 		/// is a different answer: "that is your face, but it isn't you here."
@@ -82,6 +86,9 @@ final class NotchCapsuleModel {
 		static let spoofRejectedCaption = "Face rejected. Use your password."
 		/// A blocked-by-a-check symbol, rather than one naming a cause.
 		static let spoofRejectedSymbol = "exclamationmark.shield"
+		/// The brief tick after Follow the light passes, so it is clear it worked.
+		static let movementDoneCaption = "Done"
+		static let movementDoneSymbol = "checkmark"
 
 		/// The words the panel shows, where the phase carries its own.
 		var challengePrompt: String? {
@@ -97,6 +104,7 @@ final class NotchCapsuleModel {
 			if case .pending = self { return Self.pendingCaption }
 			if case .notRecognised = self { return Self.notRecognisedCaption }
 			if case .spoofRejected = self { return Self.spoofRejectedCaption }
+			if case .unavailable(let message) = self { return message }
 			return nil
 		}
 
@@ -106,6 +114,7 @@ final class NotchCapsuleModel {
 			if case .pending = self { return Self.pendingSymbol }
 			if case .notRecognised = self { return Self.notRecognisedSymbol }
 			if case .spoofRejected = self { return Self.spoofRejectedSymbol }
+			if case .unavailable = self { return "exclamationmark.triangle.fill" }
 			return nil
 		}
 
@@ -457,6 +466,8 @@ struct NotchCapsule: View {
 			return NotchCapsuleModel.Phase.notRecognisedCaption
 		case .spoofRejected:
 			return NotchCapsuleModel.Phase.spoofRejectedCaption
+		case .unavailable(let message):
+			return message
 		default:
 			return nil
 		}
@@ -568,7 +579,7 @@ struct NotchCapsule: View {
 	/// opens — "Looking for you" is something to say.
 	private var isDynamicExpanded: Bool {
 		switch model.phase {
-		case .scanning, .challenge, .notRecognised, .spoofRejected: true
+		case .scanning, .challenge, .notRecognised, .spoofRejected, .unavailable: true
 		case .locked, .pending, .success, .unlocked: false
 		}
 	}
@@ -596,6 +607,8 @@ struct NotchCapsule: View {
 			return NotchCapsuleModel.Phase.notRecognisedCaption
 		case .spoofRejected:
 			return NotchCapsuleModel.Phase.spoofRejectedCaption
+		case .unavailable(let message):
+			return message
 		case .success:
 			return "Unlocked"
 		default:
@@ -1030,14 +1043,37 @@ struct NotchCapsule: View {
 
 	/// Specular edge over liquid glass, so the clearer tint still reads as a panel.
 	private func liquidEdge<S: Shape>(over shape: S) -> some View {
-		// A centred stroke clipped to the shape, so it sits inside like strokeBorder
-		// but works for the custom panel shape too.
-		shape.stroke(
-			LinearGradient(
-				colors: [.white.opacity(0.45), .white.opacity(0.08), .white.opacity(0.18)],
-				startPoint: .top, endPoint: .bottom),
-			lineWidth: 1.5)
+		// The dark panel recipe from the macOS 27 Figma kit, kept to what reads on a tinted
+		// panel: light bands inside the top and bottom edges and thin side rims. Centred
+		// strokes clipped to the shape, so they sit inside like strokeBorder but work for
+		// the custom panel shape too.
+		GeometryReader { proxy in
+			let band = min(10 / max(proxy.size.height, 1), 0.5)
+			ZStack {
+				shape.fill(LinearGradient(stops: [
+					.init(color: .white.opacity(0.16), location: 0),
+					.init(color: .clear, location: band),
+					.init(color: .clear, location: 1 - band),
+					.init(color: .white.opacity(0.16), location: 1),
+				], startPoint: .top, endPoint: .bottom))
+				.blendMode(.plusLighter)
+				shape.stroke(
+					LinearGradient(
+						colors: [.white.opacity(0.45), .white.opacity(0.08), .white.opacity(0.18)],
+						startPoint: .top, endPoint: .bottom),
+					lineWidth: 1)
+				ForEach([CGFloat(-1.25), 1.25], id: \.self) { offset in
+					shape.stroke(.white.opacity(0.14), lineWidth: 0.5)
+						.offset(x: offset)
+						.mask {
+							LinearGradient(colors: [.black, .clear],
+								startPoint: offset > 0 ? .leading : .trailing, endPoint: .center)
+						}
+				}
+			}
 			.clipShape(shape)
+		}
+		.allowsHitTesting(false)
 	}
 
 	/// Extra black mixed in when the wallpaper behind the panel is bright.

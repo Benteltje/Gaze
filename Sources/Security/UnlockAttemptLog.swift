@@ -134,6 +134,10 @@ final class UnlockAttemptLog {
 		let attempt = UnlockAttempt(id: id, date: Date(), result: result, reason: reason, duration: duration,
 			photoFile: keepsPhoto ? "\(id.uuidString).jpg" : nil, steps: steps)
 		attempts.insert(attempt, at: 0)
+		if result == .unknownFace || result == .spoofRejected {
+			IntruderNotice.shared.noteAttempt(at: attempt.date,
+				photo: attempt.photoFile.map { Self.directory().appendingPathComponent($0) })
+		}
 		var trimmedFiles: [String] = []
 		while attempts.count > Self.maxAttempts {
 			let removed = attempts.removeLast()

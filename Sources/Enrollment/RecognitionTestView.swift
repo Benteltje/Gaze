@@ -202,9 +202,9 @@ struct RecognitionTestView: View {
 			rows.append(("Return to start", String(format: "within ±%.2f rad", movement.returnTolerance)))
 		}
 		if spoof != nil {
-			// Mirrors AntiSpoofGate's gate decision (spoofRejectThreshold 0.65).
-			rows.append(("Photo / screen detector", spoofConf.map { $0 < 0.65 ? "Clear" : "Device seen" } ?? "Not evaluated"))
-			rows.append(("Detector score / threshold", spoofConf.map { String(format: "%.3f / %.2f", $0, 0.65) } ?? "—"))
+			let threshold = AntiSpoofGate.defaultSpoofRejectThreshold
+			rows.append(("Photo / screen detector", spoofConf.map { $0 < threshold ? "Clear" : "Device seen" } ?? "Not evaluated"))
+			rows.append(("Detector score / threshold", spoofConf.map { String(format: "%.3f / %.2f", $0, threshold) } ?? "—"))
 		} else {
 			rows.append(("Photo / screen detector", "Model unavailable"))
 		}

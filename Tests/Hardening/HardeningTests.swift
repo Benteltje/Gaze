@@ -275,8 +275,9 @@ enum HardeningTests {
 		try expect(AntiSpoofGate(spoof: nil).evaluate(FaceSample()) == .unavailable, "missing anti-spoof model fails closed")
 		try expect(AntiSpoofGate(spoof: .init(score: nil)).evaluate(FaceSample()) == .unavailable, "failed inference is not a live face")
 		try expect(AntiSpoofGate(spoof: .init(score: 0.1)).evaluate(FaceSample()) == .live, "valid low score follows unchanged threshold")
-		if case .spoof = AntiSpoofGate(spoof: .init(score: 0.7)).evaluate(FaceSample()) { checks += 1 }
-		else { throw TestError.failed("spoof rejected at existing threshold") }
+		try expect(AntiSpoofGate(spoof: .init(score: 0.7)).evaluate(FaceSample()) == .live, "classifier score below the threshold is live")
+		if case .spoof = AntiSpoofGate(spoof: .init(score: 0.95)).evaluate(FaceSample()) { checks += 1 }
+		else { throw TestError.failed("spoof rejected at threshold") }
 	}
 
 	static func releaseTests() async throws {

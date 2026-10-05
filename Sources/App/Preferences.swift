@@ -1,5 +1,6 @@
 import Foundation
 import CoreFoundation
+import Security
 import SwiftUI
 import Observation
 
@@ -209,6 +210,7 @@ final class Preferences {
 		static let tamperProtection = "tamperProtection"
 		static let requireBuiltInCamera = "requireBuiltInCamera"
 		static let allowExternalCamera = "allowExternalCamera"
+		static let approveAdminPrompts = "approveAdminPrompts"
 		static let unlockMovementCount = "unlockMovementCount"
 		static let lookMovement = "lookMovement"
 		static let disabledMovements = "disabledMovements"
@@ -325,6 +327,61 @@ final class Preferences {
 
 	var allowExternalCamera: Bool {
 		didSet { defaults.set(allowExternalCamera, forKey: Key.allowExternalCamera) }
+	}
+
+	/// Fill macOS administrator password prompts after a face check. Off by default.
+	///
+	/// Kept in the keychain, not UserDefaults: anything running as the user can
+	/// `defaults write` a bool, and this one hands out the admin password. Set it to
+	/// true only after the Touch ID or password check; missing or unreadable is off.
+	var approveAdminPrompts: Bool {
+		didSet {
+			// A failed write leaves the item missing, which `AdminPromptApproval`
+			// re-reads per prompt and treats as off.
+			if approveAdminPrompts {
+				Self.storeAdminPromptApproval()
+			} else {
+				Self.deleteAdminPromptApproval()
+			}
+		}
+	}
+
+	private static let adminPromptAccount = "approveAdminPrompts.enabled"
+	private static let adminPromptMarker = Data("enabled".utf8)
+
+	/// Same service and accessibility as `Keychain`; written directly here so this
+	/// file still builds on its own in the settings tests.
+	private static var adminPromptQuery: [String: Any] {
+		[kSecClass as String: kSecClassGenericPassword,
+		 kSecAttrService as String: "com.gazeunlock.Gaze",
+		 kSecAttrAccount as String: adminPromptAccount]
+	}
+
+	/// Whether the keychain holds Gaze's enabled marker. Any error reads as off.
+	static func adminPromptApprovalIsStored() -> Bool {
+		var query = adminPromptQuery
+		query[kSecReturnData as String] = true
+		query[kSecMatchLimit as String] = kSecMatchLimitOne
+		var item: CFTypeRef?
+		guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+			let data = item as? Data else { return false }
+		return data == adminPromptMarker
+	}
+
+	@discardableResult
+	private static func storeAdminPromptApproval() -> Bool {
+		SecItemDelete(adminPromptQuery as CFDictionary)
+		let attributes: [String: Any] = [
+			kSecValueData as String: adminPromptMarker,
+			kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+			kSecAttrSynchronizable as String: false,
+		]
+		let status = SecItemAdd(adminPromptQuery.merging(attributes) { $1 } as CFDictionary, nil)
+		return status == errSecSuccess && adminPromptApprovalIsStored()
+	}
+
+	private static func deleteAdminPromptApproval() {
+		SecItemDelete(adminPromptQuery as CFDictionary)
 	}
 
 	/// Completed responses required for Mac unlock; existing installations default to two.
@@ -446,6 +503,9 @@ final class Preferences {
 		tamperProtection = defaults.bool(forKey: Key.tamperProtection)
 		requireBuiltInCamera = defaults.object(forKey: Key.requireBuiltInCamera) as? Bool ?? true
 		allowExternalCamera = defaults.object(forKey: Key.allowExternalCamera) as? Bool ?? false
+		// The old UserDefaults copy is ignored: only the keychain item turns this on.
+		defaults.removeObject(forKey: Key.approveAdminPrompts)
+		approveAdminPrompts = Self.adminPromptApprovalIsStored()
 		unlockMovementCount = UnlockMovementCount.resolve(
 			stored: defaults.object(forKey: Key.unlockMovementCount))
 		lookMovement = defaults.object(forKey: Key.lookMovement) as? Bool ?? true

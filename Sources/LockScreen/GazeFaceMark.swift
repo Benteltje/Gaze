@@ -19,7 +19,7 @@ enum GazeFaceMotion: Equatable {
 		case .locked, .unlocked, .pending: self = .resting
 		case .scanning: self = .scanning
 		case .success: self = .accepted
-		case .notRecognised, .spoofRejected: self = .rejected
+		case .notRecognised, .spoofRejected, .unavailable: self = .rejected
 		case .challenge(_, let symbol, let horizontal, let vertical, _, _):
 			// Look at the light: the head stays still, so the face must not demo a turn.
 			// The light at the screen edge and the chevron carry the cue.
@@ -30,6 +30,7 @@ enum GazeFaceMotion: Equatable {
 			else if symbol == "eye.fill" { self = .blink }
 			else if symbol == "mouth.fill" { self = .openMouth }
 			else if symbol == "viewfinder" { self = .returnToCenter }
+			else if symbol == NotchCapsuleModel.Phase.movementDoneSymbol { self = .accepted }
 			else { self = .resting }
 		}
 	}
@@ -124,6 +125,7 @@ struct GazeFaceMark: View {
 		case .success: "Face verified"
 		case .notRecognised: "Face not recognised. Try again."
 		case .spoofRejected: "Face rejected. Use your password."
+		case .unavailable(let message): message
 		case .locked: "Locked"
 		case .unlocked: "Unlocked"
 		}

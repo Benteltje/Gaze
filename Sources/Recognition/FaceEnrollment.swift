@@ -355,9 +355,17 @@ final class FaceEnrollmentStore {
 	/// It must not be a near-duplicate of one already learned, which would fill the
 	/// set with copies. And the set is capped, dropping the oldest, so it cannot grow
 	/// without bound.
+	/// Minimum time between learned prints for one face. A var so tests can lift it.
+	static var learnInterval: TimeInterval = 24 * 60 * 60
+
 	func learn(_ print: Faceprint, for faceID: UUID) {
 		guard let index = faces.firstIndex(where: { $0.id == faceID }) else { return }
 		guard print.source == faces[index].embedder else { return }
+		// One print a day: enough to follow a new haircut or season, and an encrypted
+		// vault write on every unlock was wasted work.
+		let learnedKey = "lastLearned.\(faceID.uuidString)"
+		if let last = UserDefaults.standard.object(forKey: learnedKey) as? Date,
+			Date().timeIntervalSince(last) < Self.learnInterval { return }
 		// Anchored to the standard threshold, not the sensitivity-adjusted one, so a
 		// Relaxed setting can never teach Gaze a weaker print of the face.
 		let anchor = max(baseEmbedder.matchThreshold, embedder.matchThreshold) + 0.05
@@ -369,7 +377,10 @@ final class FaceEnrollmentStore {
 		if updated.learnedPrints.count > 8 { updated.learnedPrints.removeFirst() }
 		let previous = faces[index]
 		faces[index] = updated
-		do { try persist() } catch { faces[index] = previous }
+		do {
+			try persist()
+			UserDefaults.standard.set(Date(), forKey: learnedKey)
+		} catch { faces[index] = previous }
 	}
 
 	func remove(_ id: UUID) {
@@ -423,7 +434,8 @@ final class FaceEnrollmentStore {
 		// compared at match time below, so a sensitivity change applies to the next
 		// scan with no cache to clear.
 		if cachedMatcher == nil {
-			cachedMatcher = FaceTemplateMatcher(templates: enabled.map { $0.prints + $0.learnedPrints }, embedder: baseEmbedder)
+			cachedMatcher = FaceTemplateMatcher(templates: enabled.map { $0.prints + $0.learnedPrints },
+				originalCounts: enabled.map(\.prints.count), embedder: baseEmbedder)
 		}
 		guard let best = try? cachedMatcher?.bestMatch(to: candidate) else { return (false, 0, nil, nil) }
 		let matched = best.score >= embedder.matchThreshold

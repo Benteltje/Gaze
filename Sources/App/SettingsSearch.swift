@@ -128,6 +128,46 @@ struct SettingsSearchItem: Identifiable, Hashable, Sendable {
 			section: "securitySection"
 		),
 		SettingsSearchItem(
+			id: "admin-prompts",
+			title: "Approve admin prompts",
+			subtitle: "Fill in your password after a face check and a nod",
+			keywords: ["admin", "administrator", "password", "prompt", "approve", "padlock"],
+			pane: "security",
+			section: "securitySection"
+		),
+		SettingsSearchItem(
+			id: "sudo",
+			title: "Approve sudo",
+			subtitle: "Run sudo in Terminal with your face and a nod",
+			keywords: ["sudo", "terminal", "command", "root"],
+			pane: "security",
+			section: "securitySection"
+		),
+		SettingsSearchItem(
+			id: "input-monitoring",
+			title: "Input Monitoring",
+			subtitle: "Press Space on the lock screen to try again",
+			keywords: ["space", "retry", "keyboard", "input monitoring", "try again"],
+			pane: "security",
+			section: "permissionsSection"
+		),
+		SettingsSearchItem(
+			id: "first-match",
+			title: "Unlock on first match",
+			subtitle: "Skip the short steady look",
+			keywords: ["first match", "fast", "faster", "instant", "quick", "speed"],
+			pane: "security",
+			section: "movementsSection"
+		),
+		SettingsSearchItem(
+			id: "diagnostics",
+			title: "Save Diagnostics",
+			subtitle: "A report to send when something isn’t working",
+			keywords: ["diagnostics", "logs", "report", "problem", "support", "bug"],
+			pane: "about",
+			section: "aboutSection"
+		),
+		SettingsSearchItem(
 			id: "movements",
 			title: "Movements to unlock this Mac",
 			subtitle: "How many completed responses unlocking requires",

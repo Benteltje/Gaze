@@ -19,10 +19,15 @@ final class LookTargetOverlay {
 	}
 
 	/// The light itself: a white core with a soft radial glow, breathing gently.
-	/// Steady under Reduce Motion.
+	/// Steady under Reduce Motion. A thin ring round the core fills over each pass, so
+	/// following it shows progress; a pass that doesn't count starts the ring again.
 	private struct Target: View {
 		private static let glowDiameter: CGFloat = 44
 		private static let coreDiameter: CGFloat = 18
+		private static let ringDiameter: CGFloat = 30
+
+		/// How far through the current pass, 0 to 1. Zero while the light waits.
+		var progress: Double = 0
 
 		@State private var breathing = false
 
@@ -39,6 +44,14 @@ final class LookTargetOverlay {
 							center: .center, startRadius: 0, endRadius: Self.glowDiameter / 2)
 					)
 					.frame(width: Self.glowDiameter, height: Self.glowDiameter)
+				Circle()
+					.stroke(.white.opacity(0.25), lineWidth: 2)
+					.frame(width: Self.ringDiameter, height: Self.ringDiameter)
+				Circle()
+					.trim(from: 0, to: progress)
+					.stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+					.rotationEffect(.degrees(-90))
+					.frame(width: Self.ringDiameter, height: Self.ringDiameter)
 				Circle()
 					.fill(.white)
 					.frame(width: Self.coreDiameter, height: Self.coreDiameter)
@@ -82,7 +95,9 @@ final class LookTargetOverlay {
 			let position = LivenessChallenge.lookTargetPosition(elapsed: elapsed)
 			let angle = LivenessChallenge.lookAngle(
 				cycle: Int(elapsed / LivenessChallenge.lookPeriod), seed: LivenessChallenge.lookSeed ?? 0)
-			Target()
+			let progress = LivenessChallenge.lookOrigin == nil ? 0
+				: elapsed.truncatingRemainder(dividingBy: LivenessChallenge.lookPeriod) / LivenessChallenge.lookPeriod
+			Target(progress: progress)
 				.offset(x: cos(angle) * reachX * position, y: -sin(angle) * reachY * position)
 		}
 		.frame(width: size.width, height: size.height)
@@ -126,10 +141,12 @@ final class LookTargetOverlay {
 		// The light waits at the centre until the eyes are being read: the challenge
 		// starts its clock on the first steady frame, so the first pass is never half
 		// over before scoring begins (which wasted it and made every unlock two passes).
+		// It also waits out the lead-in, so the prompt is read before anything moves.
 		if !wasShowing || side != self.side {
 			LivenessChallenge.lookOrigin = nil
 			LivenessChallenge.lookSeed = UInt64.random(in: .min ... .max)
 			LivenessChallenge.lookOverlayWaiting = true
+			LivenessChallenge.lookLeadInUntil = ProcessInfo.processInfo.systemUptime + LivenessChallenge.lookLeadIn
 		}
 		self.side = side
 		if window == nil {
@@ -149,6 +166,7 @@ final class LookTargetOverlay {
 		isShowing = false
 		LivenessChallenge.lookOrigin = nil
 		LivenessChallenge.lookOverlayWaiting = false
+		LivenessChallenge.lookLeadInUntil = nil
 		LivenessChallenge.lookSeed = nil
 		guard let window else { return }
 		if reduceMotion {

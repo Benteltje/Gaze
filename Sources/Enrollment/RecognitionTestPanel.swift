@@ -135,8 +135,10 @@ struct RecognitionTestPanel<CameraContent: View, CompanionContent: View>: View {
 			Text(readout.status).font(.callout.weight(.semibold)).foregroundStyle(.white)
 		}
 		.padding(.horizontal, 12).padding(.vertical, 7)
-		.background(.black.opacity(0.55), in: Capsule())
-		.background(.ultraThinMaterial, in: Capsule())
+		// Dark glass in both modes: it sits on the camera image, under white text.
+		.background(.black.opacity(0.35), in: Capsule())
+		.gazeGlassPanel(in: Capsule())
+		.environment(\.colorScheme, .dark)
 		.accessibilityElement(children: .combine)
 		.animation(reducedMotion || previewReduceMotion ? nil : .smooth(duration: 0.25), value: isRecognised)
 		// Status transitions only; the score republishes ~10x a second.

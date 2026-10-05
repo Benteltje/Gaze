@@ -8,6 +8,9 @@ final class GazeBrowserApproval {
 	private let lockout: LockoutManager
 	private var listener: BrowserSocketListener?
 	private var busy = false
+	/// Request IDs already approved, so the same request can't be approved twice by
+	/// reconnecting within the lease window.
+	private var approvedIDs: [UUID: ContinuousClock.Instant] = [:]
 	private static let logger = Logger(subsystem: "com.gazeunlock.Gaze", category: "BrowserApproval")
 
 	init(store: FaceEnrollmentStore, lockout: LockoutManager) { self.store = store; self.lockout = lockout }
@@ -45,7 +48,9 @@ final class GazeBrowserApproval {
 		lockout.recordFailure()
 		guard !lockout.isLockedOut else { throw BrowserBridgeError.unavailable }
 		let faceIDs = store.faces.filter(\.isEnabled).map(\.id)
-		let requestLease = BrowserRequestLease(request)
+		approvedIDs = approvedIDs.filter { $0.value.duration(to: .now) < BrowserRequestLease.lifetime }
+		guard approvedIDs[request.requestID] == nil else { throw BrowserBridgeError.cancelled }
+		var requestLease = BrowserRequestLease(request)
 		let camera = CameraController()
 		let panel = BrowserGuidancePanel(origin: request.origin)
 		session.onInvalidation = { camera.stop(); panel.close() }
@@ -60,7 +65,7 @@ final class GazeBrowserApproval {
 		await camera.start(pinnedDeviceID: pinnedCamera)
 		guard current(), camera.state == .running, camera.boundDeviceID == pinnedCamera else { throw BrowserBridgeError.unavailable }
 		let evaluator = UnlockFrameEvaluator(embedder: store.embedder, faces: store.faces.filter(\.isEnabled), antiSpoof: detector)
-		let challenge = LivenessChallenge()
+		let challenge = LivenessChallenge(allowsLook: false)
 		var gate = UnlockChallengeGate()
 		var frames = RecognitionFrameGate()
 		var hold = RecognitionMatchHold()
@@ -123,6 +128,8 @@ final class GazeBrowserApproval {
 			guard held, gate.isVerified, current(), panel.isVisible, !panel.cancelled,
 				camera.evidenceContinuity.permits(continuity, at: .now),
 				capturedAt.duration(to: .now) <= CameraFrameLease.maximumAge else { throw BrowserBridgeError.cancelled }
+			guard requestLease.consume(request) else { throw BrowserBridgeError.cancelled }
+			approvedIDs[request.requestID] = .now
 			lockout.recordSuccess()
 			guard !lockout.isLockedOut else { throw BrowserBridgeError.unavailable }
 			return request.response(operation: "verified", approved: true)
@@ -187,6 +194,6 @@ private struct BrowserGuidanceView: View {
 			GazeLessonAnimation(motion: model.motion, paused: false, material: colorScheme == .dark ? .ink : .charcoal).frame(width: 108, height: 108)
 			Text(model.motion == .scanning ? "Look at Gaze" : "Follow this movement").font(.callout).foregroundStyle(.secondary)
 			Button("Cancel") { model.cancelled = true }.gazeButton().keyboardShortcut(.cancelAction)
-		}.padding(20).frame(width: 330, height: 250).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28))
+		}.padding(20).frame(width: 330, height: 250).gazeGlassPanel(cornerRadius: 28, castsShadow: false)
 	}
 }

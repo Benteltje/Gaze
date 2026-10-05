@@ -80,6 +80,16 @@ final class AppLockWatcher {
 				guard let bundleID = app?.bundleIdentifier else { return }
 				self?.machine.appDidLaunch(bundleID, launchedAt: app?.launchDate)
 			})
+		// Launches are covered as they start, not once the app is in front: by
+		// didActivate the window has already been drawn.
+		observers.append(
+			workspace.addObserver(
+				forName: NSWorkspace.willLaunchApplicationNotification, object: nil,
+				queue: .main
+			) { [weak self] note in
+				guard let bundleID = Self.bundleID(from: note) else { return }
+				_ = self?.appDidActivate(bundleID: bundleID)
+			})
 		observers.append(
 			workspace.addObserver(
 				forName: NSWorkspace.didTerminateApplicationNotification, object: nil,

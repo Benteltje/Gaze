@@ -1,0 +1,494 @@
+{
+  "frames\/new" : {
+    "input" : "face crop",
+    "live" : 100,
+    "model" : "new",
+    "spoof" : 100,
+    "sweep" : [
+      {
+        "accuracy" : 0.72,
+        "liveFalseReject" : 0.19,
+        "spoofRecall" : 0.63,
+        "threshold" : 0.05
+      },
+      {
+        "accuracy" : 0.73,
+        "liveFalseReject" : 0.17,
+        "spoofRecall" : 0.63,
+        "threshold" : 0.1
+      },
+      {
+        "accuracy" : 0.705,
+        "liveFalseReject" : 0.17,
+        "spoofRecall" : 0.58,
+        "threshold" : 0.15
+      },
+      {
+        "accuracy" : 0.685,
+        "liveFalseReject" : 0.15,
+        "spoofRecall" : 0.52,
+        "threshold" : 0.2
+      },
+      {
+        "accuracy" : 0.7,
+        "liveFalseReject" : 0.12,
+        "spoofRecall" : 0.52,
+        "threshold" : 0.25
+      },
+      {
+        "accuracy" : 0.695,
+        "liveFalseReject" : 0.12,
+        "spoofRecall" : 0.51,
+        "threshold" : 0.3
+      },
+      {
+        "accuracy" : 0.695,
+        "liveFalseReject" : 0.12,
+        "spoofRecall" : 0.51,
+        "threshold" : 0.35
+      },
+      {
+        "accuracy" : 0.695,
+        "liveFalseReject" : 0.11,
+        "spoofRecall" : 0.5,
+        "threshold" : 0.4
+      },
+      {
+        "accuracy" : 0.69,
+        "liveFalseReject" : 0.11,
+        "spoofRecall" : 0.49,
+        "threshold" : 0.45
+      },
+      {
+        "accuracy" : 0.68,
+        "liveFalseReject" : 0.1,
+        "spoofRecall" : 0.46,
+        "threshold" : 0.5
+      },
+      {
+        "accuracy" : 0.67,
+        "liveFalseReject" : 0.1,
+        "spoofRecall" : 0.44,
+        "threshold" : 0.55
+      },
+      {
+        "accuracy" : 0.66,
+        "liveFalseReject" : 0.1,
+        "spoofRecall" : 0.42,
+        "threshold" : 0.6
+      },
+      {
+        "accuracy" : 0.66,
+        "liveFalseReject" : 0.1,
+        "spoofRecall" : 0.42,
+        "threshold" : 0.65
+      },
+      {
+        "accuracy" : 0.67,
+        "liveFalseReject" : 0.07,
+        "spoofRecall" : 0.41,
+        "threshold" : 0.7
+      },
+      {
+        "accuracy" : 0.665,
+        "liveFalseReject" : 0.07,
+        "spoofRecall" : 0.4,
+        "threshold" : 0.75
+      },
+      {
+        "accuracy" : 0.66,
+        "liveFalseReject" : 0.07,
+        "spoofRecall" : 0.39,
+        "threshold" : 0.8
+      },
+      {
+        "accuracy" : 0.66,
+        "liveFalseReject" : 0.06,
+        "spoofRecall" : 0.38,
+        "threshold" : 0.85
+      },
+      {
+        "accuracy" : 0.665,
+        "liveFalseReject" : 0.04,
+        "spoofRecall" : 0.37,
+        "threshold" : 0.9
+      },
+      {
+        "accuracy" : 0.66,
+        "liveFalseReject" : 0.02,
+        "spoofRecall" : 0.34,
+        "threshold" : 0.95
+      }
+    ],
+    "unscored" : 0
+  },
+  "frames\/old" : {
+    "input" : "whole frame",
+    "live" : 100,
+    "model" : "old",
+    "spoof" : 100,
+    "sweep" : [
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.05
+      },
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.1
+      },
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.15
+      },
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.2
+      },
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.25
+      },
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.3
+      },
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.35
+      },
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.4
+      },
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.45
+      },
+      {
+        "accuracy" : 0.615,
+        "liveFalseReject" : 0.72,
+        "spoofRecall" : 0.95,
+        "threshold" : 0.5
+      },
+      {
+        "accuracy" : 0.68,
+        "liveFalseReject" : 0.38,
+        "spoofRecall" : 0.74,
+        "threshold" : 0.55
+      },
+      {
+        "accuracy" : 0.68,
+        "liveFalseReject" : 0.17,
+        "spoofRecall" : 0.53,
+        "threshold" : 0.6
+      },
+      {
+        "accuracy" : 0.6,
+        "liveFalseReject" : 0.06,
+        "spoofRecall" : 0.26,
+        "threshold" : 0.65
+      },
+      {
+        "accuracy" : 0.495,
+        "liveFalseReject" : 0.02,
+        "spoofRecall" : 0.01,
+        "threshold" : 0.7
+      },
+      {
+        "accuracy" : 0.5,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.75
+      },
+      {
+        "accuracy" : 0.5,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.8
+      },
+      {
+        "accuracy" : 0.5,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.85
+      },
+      {
+        "accuracy" : 0.5,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.9
+      },
+      {
+        "accuracy" : 0.5,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.95
+      }
+    ],
+    "unscored" : 0
+  },
+  "sessions\/new" : {
+    "input" : "face crop",
+    "live" : 59,
+    "model" : "new",
+    "spoof" : 35,
+    "sweep" : [
+      {
+        "accuracy" : 0.6382978723404256,
+        "liveFalseReject" : 0.23728813559322035,
+        "spoofRecall" : 0.42857142857142855,
+        "threshold" : 0.05
+      },
+      {
+        "accuracy" : 0.6808510638297872,
+        "liveFalseReject" : 0.13559322033898305,
+        "spoofRecall" : 0.37142857142857144,
+        "threshold" : 0.1
+      },
+      {
+        "accuracy" : 0.6914893617021277,
+        "liveFalseReject" : 0.0847457627118644,
+        "spoofRecall" : 0.3142857142857143,
+        "threshold" : 0.15
+      },
+      {
+        "accuracy" : 0.6914893617021277,
+        "liveFalseReject" : 0.0847457627118644,
+        "spoofRecall" : 0.3142857142857143,
+        "threshold" : 0.2
+      },
+      {
+        "accuracy" : 0.6914893617021277,
+        "liveFalseReject" : 0.0847457627118644,
+        "spoofRecall" : 0.3142857142857143,
+        "threshold" : 0.25
+      },
+      {
+        "accuracy" : 0.6808510638297872,
+        "liveFalseReject" : 0.0847457627118644,
+        "spoofRecall" : 0.2857142857142857,
+        "threshold" : 0.3
+      },
+      {
+        "accuracy" : 0.6702127659574468,
+        "liveFalseReject" : 0.0847457627118644,
+        "spoofRecall" : 0.2571428571428571,
+        "threshold" : 0.35
+      },
+      {
+        "accuracy" : 0.6702127659574468,
+        "liveFalseReject" : 0.0847457627118644,
+        "spoofRecall" : 0.2571428571428571,
+        "threshold" : 0.4
+      },
+      {
+        "accuracy" : 0.6808510638297872,
+        "liveFalseReject" : 0.06779661016949153,
+        "spoofRecall" : 0.2571428571428571,
+        "threshold" : 0.45
+      },
+      {
+        "accuracy" : 0.6595744680851063,
+        "liveFalseReject" : 0.06779661016949153,
+        "spoofRecall" : 0.2,
+        "threshold" : 0.5
+      },
+      {
+        "accuracy" : 0.6702127659574468,
+        "liveFalseReject" : 0.05084745762711865,
+        "spoofRecall" : 0.2,
+        "threshold" : 0.55
+      },
+      {
+        "accuracy" : 0.648936170212766,
+        "liveFalseReject" : 0.05084745762711865,
+        "spoofRecall" : 0.14285714285714285,
+        "threshold" : 0.6
+      },
+      {
+        "accuracy" : 0.648936170212766,
+        "liveFalseReject" : 0.05084745762711865,
+        "spoofRecall" : 0.14285714285714285,
+        "threshold" : 0.65
+      },
+      {
+        "accuracy" : 0.6595744680851063,
+        "liveFalseReject" : 0.03389830508474576,
+        "spoofRecall" : 0.14285714285714285,
+        "threshold" : 0.7
+      },
+      {
+        "accuracy" : 0.6702127659574468,
+        "liveFalseReject" : 0.01694915254237288,
+        "spoofRecall" : 0.14285714285714285,
+        "threshold" : 0.75
+      },
+      {
+        "accuracy" : 0.6702127659574468,
+        "liveFalseReject" : 0.01694915254237288,
+        "spoofRecall" : 0.14285714285714285,
+        "threshold" : 0.8
+      },
+      {
+        "accuracy" : 0.6702127659574468,
+        "liveFalseReject" : 0.01694915254237288,
+        "spoofRecall" : 0.14285714285714285,
+        "threshold" : 0.85
+      },
+      {
+        "accuracy" : 0.6702127659574468,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0.11428571428571428,
+        "threshold" : 0.9
+      },
+      {
+        "accuracy" : 0.648936170212766,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0.05714285714285714,
+        "threshold" : 0.95
+      }
+    ],
+    "unscored" : 0
+  },
+  "sessions\/old" : {
+    "input" : "face crop",
+    "live" : 59,
+    "model" : "old",
+    "spoof" : 35,
+    "sweep" : [
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.05
+      },
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.1
+      },
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.15
+      },
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.2
+      },
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.25
+      },
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.3
+      },
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.35
+      },
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.4
+      },
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.45
+      },
+      {
+        "accuracy" : 0.5212765957446809,
+        "liveFalseReject" : 0.6779661016949152,
+        "spoofRecall" : 0.8571428571428571,
+        "threshold" : 0.5
+      },
+      {
+        "accuracy" : 0.6382978723404256,
+        "liveFalseReject" : 0.3389830508474576,
+        "spoofRecall" : 0.6,
+        "threshold" : 0.55
+      },
+      {
+        "accuracy" : 0.7127659574468085,
+        "liveFalseReject" : 0.05084745762711865,
+        "spoofRecall" : 0.3142857142857143,
+        "threshold" : 0.6
+      },
+      {
+        "accuracy" : 0.6276595744680851,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.65
+      },
+      {
+        "accuracy" : 0.6276595744680851,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.7
+      },
+      {
+        "accuracy" : 0.6276595744680851,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.75
+      },
+      {
+        "accuracy" : 0.6276595744680851,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.8
+      },
+      {
+        "accuracy" : 0.6276595744680851,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.85
+      },
+      {
+        "accuracy" : 0.6276595744680851,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.9
+      },
+      {
+        "accuracy" : 0.6276595744680851,
+        "liveFalseReject" : 0,
+        "spoofRecall" : 0,
+        "threshold" : 0.95
+      }
+    ],
+    "unscored" : 0
+  }
+}

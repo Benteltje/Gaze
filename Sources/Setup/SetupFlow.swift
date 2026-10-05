@@ -232,7 +232,6 @@ struct SetupFlow: View {
 		isSinglePage = purpose == .onboarding && store.isEnrolled
 			&& (requested == .password || requested == .permission)
 		step = requested ?? (purpose == .addFace ? .capture : .welcome)
-		if step == .capture && purpose == .onboarding { OnboardingHistory.markPresented() }
 	}
 
 	/// Whether the launch flag has already been honoured.
@@ -318,7 +317,9 @@ struct SetupFlow: View {
 		guard let next = nextStep(after: step) else { return }
 		isReturning = false
 		withAnimation(stepAnimation) { step = next }
-		if next == .capture && purpose == .onboarding { OnboardingHistory.markPresented() }
+		// Marked only once a face is saved: closing during the scan used to count as
+		// having seen setup, and it never opened again on its own.
+		if purpose == .onboarding, store.isEnrolled { OnboardingHistory.markPresented() }
 		if next == .done { enableUnlockIfSetupComplete() }
 	}
 
@@ -444,7 +445,6 @@ struct SetupFlow: View {
 		failure = nil
 		model = nil
 		isReturning = false
-		if purpose == .onboarding { OnboardingHistory.markPresented() }
 		withAnimation(stepAnimation) { step = .capture }
 		startCamera()
 	}

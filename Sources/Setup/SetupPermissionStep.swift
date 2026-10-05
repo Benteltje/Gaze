@@ -128,6 +128,8 @@ struct SetupPermissionContent: View {
 		)
 	}
 
+	@State private var spaceAllowed = SpaceKeyMonitor.isAllowed
+
 	private var primaryTitle: String { status.isReady ? "Continue" : "Open System Settings" }
 
 	private var primaryAction: () -> Void { status.isReady ? onContinue : onOpenSettings }
@@ -147,6 +149,18 @@ struct SetupPermissionContent: View {
 			if showRelaunch, !status.isReady {
 				Button("Set Up Later", action: onSkip)
 					.buttonStyle(.link).font(.system(size: 12))
+			}
+			// Optional, and only once the required access is on: Space on the lock
+			// screen needs Input Monitoring, and setup was the only place nobody asked.
+			if status.isReady && !spaceAllowed {
+				Button("Also let Space retry a scan") {
+					if !SpaceKeyMonitor.requestAccess(),
+						let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+						NSWorkspace.shared.open(url)
+					}
+					spaceAllowed = SpaceKeyMonitor.isAllowed
+				}
+				.buttonStyle(.link).font(.system(size: 12))
 			}
 			if let settingsError {
 				Text(settingsError)

@@ -5,7 +5,7 @@ import Vision
 
 /// Face-crop classification anti-spoof.
 ///
-/// Runs the Roboflow-trained classifier (`scripts/train_spoof.swift`) on the face crop and
+/// Runs the live/spoof classifier (`Tools/Scripts/train-spoof-classifier.swift`) on the face crop and
 /// reports how confidently it sees a *spoof* — a held phone, a screen, a printed photo.
 /// From that dataset, class `"1"` is a spoof and `"0"` is a live face.
 ///
@@ -26,11 +26,9 @@ struct SpoofDetector: @unchecked Sendable {
 
 	private let slot: ModelSlot<VNCoreMLModel>
 	private let side: Int
-	/// The shipped `Spoof.mlmodel` is still the Roboflow *object detector* (boxes plus
-	/// labels, trained on whole frames). Reading it as a classifier returned nil on every
-	/// frame, so each matched face was refused as "anti-spoof unavailable" and unlocking
-	/// failed instantly. Detected from the model's outputs, so swapping in a classifier
-	/// later needs no code change.
+	/// The old Roboflow *object detector* (boxes plus labels, trained on whole frames) read
+	/// as a classifier returned nil on every frame and refused every face. It is no longer
+	/// bundled, but the model kind is still read from its outputs so either can be dropped in.
 	private let isDetector: Bool
 
 	init?() {

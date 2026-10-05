@@ -33,7 +33,9 @@ final class AppLockStateMachine {
 	private var unlockedAt: [String: Date] = [:]
 	/// How long after an unlock the same app is never shielded again. The unlock
 	/// itself moves windows and activation around, and each move is an activation.
-	static let unlockGrace: TimeInterval = 3
+	/// One second covers the window moves; longer left a just-unlocked app open to
+	/// whoever sat down next.
+	static let unlockGrace: TimeInterval = 1
 
 	init(store: AppLockStore) {
 		self.store = store

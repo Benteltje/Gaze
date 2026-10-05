@@ -1,6 +1,6 @@
 {
   "schema": "gaze-model-clearance/1",
-  "generated": "2026-09-18",
+  "generated": "2026-10-05",
   "note": "Fingerprints cover all declared model inputs, including precompiled models, package metadata and asset files. No clearance or provenance is inferred from matching bytes.",
   "requiredScopes": [
     "bundled-app-distribution"
@@ -104,7 +104,7 @@
     {
       "id": "spoof-detector",
       "kind": "ml-model",
-      "description": "Face-spoof object detector (held phone/screen/printed photo). Runs via SpoofDetector through AntiSpoofGate; reject cutoff 0.65. Compiled by build.sh into Spoof.mlmodelc.",
+      "description": "Face-crop spoof classifier (held phone/screen/printed photo). Runs via SpoofDetector through AntiSpoofGate; reject cutoff 0.90 (AntiSpoofGate.defaultSpoofRejectThreshold). Compiled by build.sh into Spoof.mlmodelc.",
       "repoPaths": [
         "Resources/Spoof.mlmodel"
       ],
@@ -113,14 +113,18 @@
         "files": [
           {
             "path": "Resources/Spoof.mlmodel",
-            "bytes": 6831170,
-            "sha256": "e4037752e867f72f3acf5525cbd2fc08d6c6b240e0df4aeeeea10fad9fc9e76f"
+            "bytes": 6614,
+            "sha256": "acf24aa796193b6aaf59696182ecfc886ec4a91e5300c2bf403fb2beddc11aba"
           }
         ]
       },
       "provenance": {
-        "summary": "Trained locally with scripts/train_spoof.swift (CreateML transfer learning, Apple ObjectPrint extractor; input contract scripts/train_spoof.swift:1-12, metadata author 'Gaze' version '1.0' scripts/train_spoof.swift:53-57) from the Roboflow 'Face Spoof Detection' CreateML export (train/valid/test splits, _annotations.createml.json per split). Training-data copy is git-ignored (.gitignore:27-28,30-32), not in the repo. Consumed at Sources/Recognition/SpoofDetector.swift:6-10 and bundled via build.sh:114-124. Owner confirms (2026-09-20) they trained Resources/Spoof.mlmodel themselves by running scripts/train_spoof.swift against that export. The shipped bytes bind to the script directly: Resources/Spoof.mlmodel embeds author 'Gaze' and the shortDescription 'Face-spoof object detector (Roboflow Face Spoof Detection, CC BY 4.0).' character-for-character as written at scripts/train_spoof.swift:53-57, alongside com.apple.createml.version markers. Verified 2026-09-20 by reading the model's metadata block. No training log exists; this metadata match is the stronger record.",
+        "summary": "Trained locally on 2026-10-05 with Tools/Scripts/train-spoof-classifier.swift (Create ML image classifier, Apple scenePrint v2 feature extractor, logistic regression) on face crops cut with Vision the same way the app's contextCrop does, from the Roboflow 'Face Spoof Detection' export (person-grouped live/spoof split) plus the owner's own capture sessions from Gaze's dataset capture tool (~/Documents/GazeDataset, the owner's own face). Held-out evaluation and threshold sweep in outputs/spoof-models/metrics.json; the previous detector is kept at outputs/spoof-models/Spoof-detector-old.mlmodel. Owner confirms (2026-10-05) shipping this model in the bundled app, including what it learned from the owner's own face captures. Previous model: Trained locally with scripts/train_spoof.swift (CreateML transfer learning, Apple ObjectPrint extractor; input contract scripts/train_spoof.swift:1-12, metadata author 'Gaze' version '1.0' scripts/train_spoof.swift:53-57) from the Roboflow 'Face Spoof Detection' CreateML export (train/valid/test splits, _annotations.createml.json per split). Training-data copy is git-ignored (.gitignore:27-28,30-32), not in the repo. Consumed at Sources/Recognition/SpoofDetector.swift:6-10 and bundled via build.sh:114-124. Owner confirms (2026-09-20) they trained Resources/Spoof.mlmodel themselves by running scripts/train_spoof.swift against that export. The shipped bytes bind to the script directly: Resources/Spoof.mlmodel embeds author 'Gaze' and the shortDescription 'Face-spoof object detector (Roboflow Face Spoof Detection, CC BY 4.0).' character-for-character as written at scripts/train_spoof.swift:53-57, alongside com.apple.createml.version markers. Verified 2026-09-20 by reading the model's metadata block. No training log exists; this metadata match is the stronger record.",
         "evidenceRefs": [
+          "Tools/Scripts/train-spoof-classifier.swift",
+          "outputs/spoof-models/metrics.json",
+          "docs/spoof-training.md",
+          "Owner confirmation, release session 2026-10-05: ship the new classifier, including the owner's own face captures",
           "scripts/train_spoof.swift:1-12,53-57",
           "Sources/Recognition/SpoofDetector.swift:6-10",
           "build.sh:111-124",
@@ -129,7 +133,7 @@
           "scripts/train_spoof.swift (training script that produced the bundled model)",
           "Owner confirmation, release-clearance session 2026-09-20 (trained it themselves via scripts/train_spoof.swift), corroborated by Resources/Spoof.mlmodel's embedded CreateML metadata matching scripts/train_spoof.swift:53-57 verbatim"
         ],
-        "status": "owner-confirmed-model-metadata-matched"
+        "status": "owner-confirmed"
       },
       "license": {
         "summary": "Training dataset is Roboflow 'Face Spoof Detection' (https://universe.roboflow.com/mohammeds-workspace-ft3sn/face-spoof-detection-liika), provided by a Roboflow user, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Owner confirms (2026-09-20) the dataset terms permit redistribution of the trained Resources/Spoof.mlmodel weights in the app bundle with attribution as recorded in NOTICE.md. The bundled weights are a derivative work trained on the dataset, not a copy of it.",
@@ -361,7 +365,7 @@
         ]
       },
       "provenance": {
-        "summary": "Existing screenshots and derivative rounded assets are documented in the referenced provenance manifests. tour-general/notch/unlock/security.png are cropped photographs of the app's own Settings views produced by Tools/ProductCapture/export-tour-shots.py; the manifest's nativeSHA256 values match the bytes recorded here. tour-how-unlock.png is rendered from app code and lockscreen-base.png by Tools/OnboardingArt/render-unlock-tour.sh. These records identify sources and bytes; they do not establish redistribution grants. Owner confirms (2026-09-20, release-clearance session) first-party authorship of five files \u2014 tour-general.png, tour-how-unlock.png, tour-notch.png, tour-security.png, tour-unlock.png \u2014 as screenshots/renders of their own machine and app with no third-party content; owner confirms (2026-09-21, release-clearance session) they created 28 of the 30 files themselves, screenshots and renders of their own machine and app with no third-party content. The two exceptions are NOT first-party and NOT cleared: Resources/Art/backdrop.png and Resources/Art/lockscreen-base.png are a widely-used wallpaper the owner did not create, of unestablished provenance; the owner knowingly accepts the risk of redistributing them, including in a public repository, carried in the owner's name. Owner decision (2026-09-27, 0.1.1 release): tour images re-encoded at smaller sizes and re-recorded by bytes; Resources/Art/tour-backdrop.png, the backdrop behind the setup and tour cards, is recorded like backdrop.png as a wallpaper the owner did not create, of unestablished provenance, shipped as a known accepted risk carried in the owner's name. Resources/Art/setup-camera-prompt.png (2026-09-27) is a screenshot taken by the owner on their own Mac of macOS's camera permission prompt for Gaze, shown in setup so the page matches what the user will see. Resources/Art/setup-accessibility.png (2026-09-27) is the owner's own screenshot of System Settings on their Mac, with the list of other apps removed. Resources/Art/setup-password.png (2026-09-27) is the owner's screenshot of Gaze's own Settings Unlocking section.",
+        "summary": "Existing screenshots and derivative rounded assets are documented in the referenced provenance manifests. tour-general/notch/unlock/security.png are cropped photographs of the app's own Settings views produced by Tools/ProductCapture/export-tour-shots.py; the manifest's nativeSHA256 values match the bytes recorded here. tour-how-unlock.png is rendered from app code and lockscreen-base.png by Tools/OnboardingArt/render-unlock-tour.sh. These records identify sources and bytes; they do not establish redistribution grants. Owner confirms (2026-09-20, release-clearance session) first-party authorship of five files — tour-general.png, tour-how-unlock.png, tour-notch.png, tour-security.png, tour-unlock.png — as screenshots/renders of their own machine and app with no third-party content; owner confirms (2026-09-21, release-clearance session) they created 28 of the 30 files themselves, screenshots and renders of their own machine and app with no third-party content. The two exceptions are NOT first-party and NOT cleared: Resources/Art/backdrop.png and Resources/Art/lockscreen-base.png are a widely-used wallpaper the owner did not create, of unestablished provenance; the owner knowingly accepts the risk of redistributing them, including in a public repository, carried in the owner's name. Owner decision (2026-09-27, 0.1.1 release): tour images re-encoded at smaller sizes and re-recorded by bytes; Resources/Art/tour-backdrop.png, the backdrop behind the setup and tour cards, is recorded like backdrop.png as a wallpaper the owner did not create, of unestablished provenance, shipped as a known accepted risk carried in the owner's name. Resources/Art/setup-camera-prompt.png (2026-09-27) is a screenshot taken by the owner on their own Mac of macOS's camera permission prompt for Gaze, shown in setup so the page matches what the user will see. Resources/Art/setup-accessibility.png (2026-09-27) is the owner's own screenshot of System Settings on their Mac, with the list of other apps removed. Resources/Art/setup-password.png (2026-09-27) is the owner's screenshot of Gaze's own Settings Unlocking section.",
         "evidenceRefs": [
           "build.sh:131-134",
           "Tools/OnboardingArt/manifest.json",
